@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drum-companion"
+version = "0.1.0"
+description = "Greenfield scaffold for a drum companion app for solo guitar and voice performances"
+requires-python = ">=3.11"
+dependencies = [
+    "librosa>=0.11,<1.1",
+    "numpy>=1.26,<3",
+    "soundfile>=0.12,<1",
+    "sounddevice>=0.5,<1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["drum_companion*"]

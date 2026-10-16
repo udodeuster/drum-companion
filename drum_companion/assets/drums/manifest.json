@@ -1,0 +1,61 @@
+{
+  "kit_name": "Fractanimal Acoustic Drum Kit Starter",
+  "source_pack": "Fractanimal_Acoustic_Drum_Kit_One_Shots",
+  "source_pack_url": "https://freesound.org/people/johnnydekk/packs/32722/",
+  "source_author": "johnnydekk",
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "note": "Bundled files are the publicly accessible HQ MP3 previews of the listed CC0 WAV originals. Each individual sound page displayed CC0. Original WAV downloads require a Freesound login. The preview files are included as offline playback assets.",
+  "assets": [
+    {
+      "file": "kick.mp3",
+      "instrument": "kick",
+      "source_title": "Fractanimal_Acoustic_Drum_Kit_Kick_7.wav",
+      "source_url": "https://freesound.org/people/johnnydekk/sounds/581461/",
+      "preview_url": "https://cdn.freesound.org/previews/581/581461_5790048-hq.mp3",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "original_format": "WAV, stereo, 44100 Hz, 24-bit"
+    },
+    {
+      "file": "snare.mp3",
+      "instrument": "snare",
+      "source_title": "Fractanimal_Acoustic_Drum_Kit_Snare_1.wav",
+      "source_url": "https://freesound.org/people/johnnydekk/sounds/581469/",
+      "preview_url": "https://cdn.freesound.org/previews/581/581469_5790048-hq.mp3",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "original_format": "WAV, stereo, 44100 Hz, 24-bit"
+    },
+    {
+      "file": "closed_hat.mp3",
+      "instrument": "closed hi-hat",
+      "source_title": "Fractanimal_Acoustic_Drum_Kit_High_Hat_1.wav",
+      "source_url": "https://freesound.org/people/johnnydekk/sounds/581471/",
+      "preview_url": "https://cdn.freesound.org/previews/581/581471_5790048-hq.mp3",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "original_format": "WAV, stereo, 44100 Hz, 24-bit"
+    },
+    {
+      "file": "open_hat.mp3",
+      "instrument": "open hi-hat",
+      "source_title": "Fractanimal_Acoustic_Drum_Kit_High_Hat_Open_Close_1.wav",
+      "source_url": "https://freesound.org/people/johnnydekk/sounds/581476/",
+      "preview_url": "https://cdn.freesound.org/previews/581/581476_5790048-hq.mp3",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "original_format": "WAV, stereo, 44100 Hz, 24-bit"
+    },
+    {
+      "file": "cymbal.mp3",
+      "instrument": "cymbal",
+      "source_title": "Fractanimal_Acoustic_Drum_Kit_Cymbal_Ride_Crash.wav",
+      "source_url": "https://freesound.org/people/johnnydekk/sounds/581472/",
+      "preview_url": "https://cdn.freesound.org/previews/581/581472_5790048-hq.mp3",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "original_format": "WAV, stereo, 44100 Hz, 24-bit"
+    }
+  ]
+}
