@@ -11,6 +11,7 @@ from drum_companion.audio.analysis import AudioAnalyzer
 from drum_companion.audio.groove import GrooveFollower
 from drum_companion.audio.input import AudioBlock
 from drum_companion.audio.output import PlaybackCoordinator, SampleBank, SampleMixer
+from drum_companion.models import AudioAnalysisObservation
 
 
 def make_pulse_track(sample_rate: int = 22050) -> np.ndarray:
@@ -151,8 +152,63 @@ class TestAudioAnalysis(unittest.TestCase):
         self.assertAlmostEqual(steady[-1].tempo_bpm, 120.0, delta=8.0)
         self.assertEqual(paused[-1].tempo_bpm, steady[-1].tempo_bpm)
         self.assertEqual(paused[-1].effective_intensity, 0.0)
+        self.assertEqual(set(paused[-1].pattern), {"----"})
         self.assertAlmostEqual(recovered[-1].tempo_bpm, 150.0, delta=12.0)
         self.assertGreater(recovered[-1].effective_intensity, paused[-1].effective_intensity)
+        self.assertTrue(any("K" in cell or "S" in cell for cell in recovered[-1].pattern))
+
+    def test_phrase_transition_changes_future_bars_without_moving_queued_hits(self):
+        sample_rate = 1000
+
+        class OfflineOutput:
+            def __init__(self):
+                self.sample_bank = SampleBank(
+                    {"kick": np.ones((1, 1), dtype=np.float32)},
+                    sample_rate=sample_rate,
+                    channels=1,
+                )
+                self.frame_position = 0
+                self.scheduled = []
+
+            def schedule(self, event, frame_position):
+                self.scheduled.append((frame_position, event))
+
+        output = OfflineOutput()
+        coordinator = PlaybackCoordinator(output, horizon_seconds=0.5, lead_in_seconds=0.0)
+        follower = GrooveFollower(style="rock", feel="tight", intensity=0.55, phrase="verse")
+        scheduled_at_transition = ()
+
+        for timestamp in (0.0, 1.5, 3.5, 4.0, 5.5, 6.0, 7.5):
+            output.frame_position = round(timestamp * sample_rate)
+            if timestamp >= 4.0:
+                follower.phrase = "chorus"
+            decision = follower.update(
+                AudioAnalysisObservation(
+                    timestamp_seconds=timestamp,
+                    onset_times_seconds=(),
+                    tempo_bpm=120.0,
+                    tempo_confidence=0.9,
+                    combined_energy=0.5,
+                    energy_confidence=0.9,
+                )
+            )
+            coordinator.update(decision)
+            if timestamp == 4.0:
+                scheduled_at_transition = tuple(output.scheduled)
+
+        verse_kick = next(
+            event for frame, event in output.scheduled
+            if frame == 0 and event.instrument == "kick"
+        )
+        chorus_kick = next(
+            event for frame, event in output.scheduled
+            if frame == 6000 and event.instrument == "kick"
+        )
+        scheduled_frames = [frame for frame, _ in output.scheduled]
+
+        self.assertGreater(chorus_kick.velocity, verse_kick.velocity)
+        self.assertEqual(tuple(output.scheduled[: len(scheduled_at_transition)]), scheduled_at_transition)
+        self.assertEqual(scheduled_frames, sorted(scheduled_frames))
 
     def test_offline_fixture_renders_from_analysis_through_sample_mixer(self):
         sample_rate = 22050

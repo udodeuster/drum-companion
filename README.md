@@ -37,6 +37,16 @@ python main.py --live --play-drums --output-device 3 --master-level 0.7
 
 During playback, press `M` to mute/unmute, `+` or `-` to adjust output level, and `Q` or `Ctrl+C` to stop. The bundled CC0 starter kit's asset sources and license details are in `drum_companion/assets/drums/manifest.json`. Only the drums are sent to the selected output; guitar/voice input is not monitored through it.
 
+For same-computer or phone control on a private network, start the local browser panel:
+
+```bash
+python main.py --web
+```
+
+Open the printed localhost URL on the computer and scan the QR code shown there with your phone. The QR opens the page only; enter the PIN displayed on the computer manually on your phone. The panel does not use a cloud service. Keep it on a trusted private network and do not forward its port through your router; plain HTTP does not encrypt traffic on the LAN.
+
+If the phone cannot connect, set the computer's Wi-Fi network profile to **Private** and allow Python through Windows Defender Firewall on private networks. Guest Wi-Fi or router client isolation can also prevent devices from reaching each other. Do not allow access on public networks.
+
 For a Windows playback smoke test, choose an index from `--list-outputs` and run `python main.py --live --play-drums --output-device <index> --master-level 0.15` while playing a steady guitar pulse. Confirm the drum pattern becomes audible, test `M` and `+`/`-`, then stop with `Q`. If the output device cannot open, an actionable warning is printed and microphone analysis continues without drums.
 
 Start capture with the default input, or select an index from the device list. Stop with `Ctrl+C`:

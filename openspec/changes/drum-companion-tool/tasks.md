@@ -22,5 +22,13 @@
 
 ## 5. Integration verification
 
-- [ ] 5.1 Run end-to-end validation across verse and chorus transitions and verify the accompaniment stays aligned with the live phrase.
-- [ ] 5.2 Validate fallback behavior during missed detections and verify the system degrades gracefully without breaking the performance.
+- [x] 5.1 Run end-to-end validation across verse and chorus transitions and verify the accompaniment stays aligned with the live phrase.
+- [x] 5.2 Validate fallback behavior during missed detections and verify the system degrades gracefully without breaking the performance.
+
+## 6. Local browser controls
+
+- [x] 6.1 Add a managed live-audio worker and thread-safe control channel for start, stop, status, and runtime settings.
+- [x] 6.2 Serve a browser control page and local API for host and private-network access; verify the service does not depend on a cloud endpoint.
+- [x] 6.3 Add one-time PIN pairing, authenticated control requests, and session invalidation when the app session ends.
+- [x] 6.4 Build responsive controls for playback lifecycle, status, devices, style, feel, phrase, intensity, mute, and master level.
+- [x] 6.5 Verify immediate mute/level updates, next-unscheduled-bar groove updates, device-change restart behavior, and rejection of unpaired requests.

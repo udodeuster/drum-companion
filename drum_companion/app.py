@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
+import secrets
+import socket
 import sys
 from queue import Empty
 
@@ -13,7 +16,9 @@ from drum_companion.audio.output import (
     SampleOutput,
     list_output_devices,
 )
+from drum_companion.control import LiveAudioController, LiveSettings
 from drum_companion.ui import GrooveDashboard, InteractionPreset
+from drum_companion.web import create_control_server
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -29,6 +34,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--list-inputs", action="store_true", help="List available microphone input devices.")
     parser.add_argument("--list-outputs", action="store_true", help="List available drum playback devices.")
     parser.add_argument("--live", action="store_true", help="Start live microphone analysis; press Ctrl+C to stop.")
+    parser.add_argument("--web", action="store_true", help="Start the local browser control page for this computer and private network.")
+    parser.add_argument("--web-port", type=int, default=8765, help="Port for the local browser control page (default: 8765).")
     parser.add_argument("--play-drums", action="store_true", help="Render the groove to an audio output while using --live.")
     parser.add_argument("--output-device", type=int, help="Output device index shown by --list-outputs.")
     parser.add_argument("--master-level", type=float, default=0.75, help="Drum output level from 0.0 to 1.0.")
@@ -156,6 +163,85 @@ def run_live(
             output.stop()
 
 
+def run_web(args: argparse.Namespace) -> int:
+    if args.web_port < 1 or args.web_port > 65535:
+        raise SystemExit("--web-port must be between 1 and 65535")
+    if args.master_level < 0.0 or args.master_level > 1.0:
+        raise SystemExit("--master-level must be between 0.0 and 1.0")
+
+    settings = LiveSettings(
+        input_device=args.device,
+        output_device=args.output_device,
+        style=args.style,
+        feel=args.feel,
+        phrase=args.phrase,
+        intensity=args.intensity,
+        master_level=args.master_level,
+    )
+    controller = LiveAudioController(settings)
+    pairing_pin = f"{secrets.randbelow(1_000_000):06d}"
+    addresses = _private_network_addresses()
+    phone_address = _preferred_private_address(addresses)
+    phone_url = ""
+    if phone_address is not None:
+        phone_url = f"http://{phone_address}:{args.web_port}/"
+    server = create_control_server(
+        controller,
+        pairing_pin,
+        port=args.web_port,
+        phone_url=phone_url,
+    )
+    port = server.server_address[1]
+    print(f"Drum Companion controls: http://127.0.0.1:{port}")
+    if phone_address is not None:
+        print(f"Phone QR/link: http://{phone_address}:{port}/")
+    for address in addresses:
+        if address != phone_address:
+            print(f"Other network address: http://{address}:{port}")
+    print(f"One-time pairing PIN: {pairing_pin}")
+    print("If your phone cannot connect, allow Python on a Private network and check that Wi-Fi client isolation is disabled.")
+    print("Press Ctrl+C to stop the control server.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.invalidate_sessions()
+        server.server_close()
+        controller.stop()
+    return 0
+
+
+def _private_network_addresses() -> list[str]:
+    try:
+        addresses = socket.gethostbyname_ex(socket.gethostname())[2]
+    except OSError:
+        return []
+    return sorted(
+        {
+            address
+            for address in addresses
+            if ipaddress.ip_address(address).is_private and not ipaddress.ip_address(address).is_loopback
+        }
+    )
+
+
+def _preferred_private_address(addresses: list[str]) -> str | None:
+    if not addresses:
+        return None
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 9))
+        routed_address = probe.getsockname()[0]
+    except OSError:
+        routed_address = None
+    finally:
+        probe.close()
+    if routed_address in addresses:
+        return routed_address
+    return addresses[0]
+
+
 def run_cli(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.list_inputs:
@@ -174,6 +260,8 @@ def run_cli(argv: list[str] | None = None) -> int:
         for device in devices:
             print(f"{device.index}: {device.name} ({device.channels} output channel(s), {device.sample_rate} Hz)")
         return 0
+    if args.web:
+        return run_web(args)
     if args.live:
         if args.master_level < 0.0 or args.master_level > 1.0:
             raise SystemExit("--master-level must be between 0.0 and 1.0")

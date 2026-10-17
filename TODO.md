@@ -1,0 +1,5 @@
+## TODO
+
+- Clarify license / legal
+
+- 

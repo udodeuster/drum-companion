@@ -12,6 +12,7 @@ dependencies = [
     "numpy>=1.26,<3",
     "soundfile>=0.12,<1",
     "sounddevice>=0.5,<1",
+    "qrcode>=8,<9",
 ]
 
 [tool.pytest.ini_options]
@@ -19,3 +20,6 @@ pythonpath = ["."]
 
 [tool.setuptools.packages.find]
 include = ["drum_companion*"]
+
+[tool.setuptools.package-data]
+drum_companion = ["assets/control/*.html"]
