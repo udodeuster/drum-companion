@@ -345,7 +345,7 @@ class TestGrooveScheduler(unittest.TestCase):
 
 
 class TestPlaybackCoordinator(unittest.TestCase):
-    def test_pause_and_recovery_transitions_align_to_scheduler_downbeats(self):
+    def test_inactive_input_keeps_groove_scheduling_until_manual_stop(self):
         class FakeOutput:
             sample_bank = SampleBank(
                 {"kick": np.ones((4, 2), dtype=np.float32)}, sample_rate=1000, channels=2
@@ -371,16 +371,21 @@ class TestPlaybackCoordinator(unittest.TestCase):
         coordinator.update(active)
         output.frame_position = 1000
         coordinator.update(inactive)
-        self.assertEqual(coordinator.inactivity_transition_frames, (2000, 4000, 6000))
-        self.assertEqual(output.scheduled_gain_ramps[-1], (4000, 6000, 0.0))
+        timed_out = GrooveDecision(120.0, 0.0, 0.8, pattern, True, True, False)
+        output.frame_position = 1500
+        coordinator.update(timed_out)
         scheduled_before_resume = tuple(output.scheduled)
         output.frame_position = 2500
         coordinator.update(active)
+        output.frame_position = 3000
+        coordinator.update(active)
 
-        self.assertEqual(coordinator.inactivity_transition_frames, None)
-        self.assertEqual(coordinator.resume_ramp_frames, (4000, 4500))
-        self.assertEqual(output.scheduled_gain_ramps[-1], (4000, 4500, 1.0))
         self.assertEqual(tuple(output.scheduled[: len(scheduled_before_resume)]), scheduled_before_resume)
+        kick_frames = [
+            frame for frame, event in output.scheduled if event.instrument == "kick"
+        ]
+        self.assertTrue({0, 1000, 2000, 3000, 4000}.issubset(kick_frames))
+        self.assertEqual(output.scheduled_gain_ramps, [])
 
     def test_live_decisions_queue_future_bars_without_moving_existing_hits(self):
         class FakeOutput:
@@ -413,7 +418,7 @@ class TestPlaybackCoordinator(unittest.TestCase):
         self.assertGreater(len(output.scheduled), len(original))
         self.assertTrue(any(frame >= 4000 for frame, _ in output.scheduled[len(original) :]))
 
-    def test_reliable_pause_and_recovery_decisions_reach_audio_callback(self):
+    def test_inactive_and_recovered_decisions_keep_audio_callback_playing(self):
         devices = [{"name": "Speakers", "max_output_channels": 2, "default_samplerate": 1000}]
         bank = SampleBank(
             {"kick": np.full((32, 2), 0.5, dtype=np.float32)},
@@ -456,7 +461,7 @@ class TestPlaybackCoordinator(unittest.TestCase):
 
         self.assertGreater(float(np.max(np.abs(first_bar))), 0.0)
         self.assertGreater(float(np.sum(np.square(hold_bar))), 0.0)
-        self.assertLess(float(np.sum(np.square(fade_bar))), float(np.sum(np.square(hold_bar))))
+        self.assertGreater(float(np.sum(np.square(fade_bar))), 0.0)
         self.assertGreater(float(np.max(np.abs(recovery_bar))), 0.0)
         self.assertEqual(output.frame_position, 7600)
 

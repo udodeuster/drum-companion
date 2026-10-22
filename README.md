@@ -35,11 +35,11 @@ Start live analysis with sampled drum playback. Select an output index from `--l
 python main.py --live --play-drums --output-device 3 --master-level 0.7 --onset-timeout-bars 1
 ```
 
-`--onset-timeout-bars` accepts `0`, `1`, `2`, or `4` bars and defaults to `1`. It controls how long the app waits without detected attacks before treating an otherwise active input as musically inactive; zero makes the first onset gap eligible, while longer values preserve sparse playing longer. During a brief pause the last groove continues to the next downbeat, holds for one full bar, then fades over the next bar. If attacks return, playback rejoins on a downbeat without restarting the bar phase and ramps back over one beat.
+`--onset-timeout-bars` accepts `0`, `1`, `2`, or `4` bars and defaults to `1`. It controls how long the app waits without detected attacks before treating an otherwise active input as musically inactive; zero makes the first onset gap eligible, while longer values preserve sparse playing longer. Once a tempo and groove have been established, the last groove continues at its current tempo and intensity through input silence and timeout inactivity until playback is manually stopped. When input returns, new reliable tempo and groove decisions update future bars without restarting the bar phase or moving already scheduled hits.
 
 The tight feel keeps eighth notes straight. Relaxed feel delays offbeat eighth notes for a 55% swing; rock and folk add quiet offbeat ghost snares, while indie does not. Intensity changes accompaniment strength and supplementary accents/hi-hat density; the core kick and backbeat remain while intensity is above zero. Master level independently controls overall output volume.
 
-When a tempo estimate is near half or double the last stable pulse, the app waits for three consistent reliable estimates before changing pulse. Other reliable tempo changes remain responsive. The live view exposes current confidence while holding the prior pulse.
+When a tempo estimate is near half or double the last stable pulse, the app holds the prior pulse until consistent reliable estimates support the alternative for at least three seconds. Other reliable tempo changes remain responsive. The live view exposes current confidence while holding the prior pulse.
 
 During playback, press `M` to mute/unmute, `+` or `-` to adjust output level, and `Q` or `Ctrl+C` to stop. The bundled CC0 starter kit's asset sources and license details are in `drum_companion/assets/drums/manifest.json`. Only the drums are sent to the selected output; guitar/voice input is not monitored through it.
 

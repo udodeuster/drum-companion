@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from drum_companion.models import AudioAnalysisObservation, GrooveDecision
 
+_OCTAVE_TEMPO_CONFIRMATION_SECONDS = 3.0
+
 STYLE_PROFILES = {
     "rock": {"density": 1.0, "accent": 1.0, "kick": [1, 0, 0, 0, 1, 0, 0, 0], "snare": [0, 0, 1, 0, 0, 0, 1, 0], "hihat": [1, 1, 1, 1, 1, 1, 1, 1], "ghost_snare_steps": [1, 5]},
     "folk": {"density": 0.7, "accent": 0.8, "kick": [1, 0, 0, 0, 1, 0, 0, 1], "snare": [0, 0, 1, 0, 0, 0, 1, 0], "hihat": [0, 1, 0, 1, 0, 1, 0, 1], "ghost_snare_steps": [1, 5]},
@@ -150,13 +152,31 @@ class GrooveFollower:
         self._last_effective_intensity = 0.0
         self._pending_octave_tempo: float | None = None
         self._pending_octave_observations = 0
+        self._pending_octave_since_seconds: float | None = None
 
     def update(self, observation: AudioAnalysisObservation) -> GrooveDecision:
         if observation.onset_times_seconds:
             self._last_detected_onset = max(observation.onset_times_seconds)
 
+        onset_timeout_seconds = (
+            240.0 * self.onset_timeout_bars / self._last_stable_tempo
+            if self._last_stable_tempo is not None
+            else None
+        )
+        onset_age = (
+            observation.timestamp_seconds - self._last_detected_onset
+            if self._last_detected_onset is not None
+            else None
+        )
+        onset_timed_out = (
+            onset_timeout_seconds is not None
+            and onset_age is not None
+            and (onset_age > 0.0 if self.onset_timeout_bars == 0 else onset_age >= onset_timeout_seconds)
+        )
+        musical_activity_active = observation.signal_active and not onset_timed_out
+
         reliable = (
-            observation.signal_active
+            musical_activity_active
             and not observation.discontinuity
             and observation.tempo_bpm is not None
             and observation.tempo_confidence >= 0.35
@@ -176,36 +196,28 @@ class GrooveFollower:
                 else:
                     self._pending_octave_tempo = observation.tempo_bpm
                     self._pending_octave_observations = 1
-                if self._pending_octave_observations >= 3:
+                    self._pending_octave_since_seconds = observation.timestamp_seconds
+                if (
+                    self._pending_octave_observations >= 3
+                    and self._pending_octave_since_seconds is not None
+                    and observation.timestamp_seconds - self._pending_octave_since_seconds
+                    >= _OCTAVE_TEMPO_CONFIRMATION_SECONDS
+                ):
                     self._last_stable_tempo = observation.tempo_bpm
                     tempo_update_accepted = True
                     self._pending_octave_tempo = None
                     self._pending_octave_observations = 0
+                    self._pending_octave_since_seconds = None
             else:
                 self._last_stable_tempo = observation.tempo_bpm
                 tempo_update_accepted = True
                 self._pending_octave_tempo = None
                 self._pending_octave_observations = 0
+                self._pending_octave_since_seconds = None
         else:
             self._pending_octave_tempo = None
             self._pending_octave_observations = 0
-
-        onset_timeout_seconds = (
-            240.0 * self.onset_timeout_bars / self._last_stable_tempo
-            if self._last_stable_tempo is not None
-            else None
-        )
-        onset_age = (
-            observation.timestamp_seconds - self._last_detected_onset
-            if self._last_detected_onset is not None
-            else None
-        )
-        onset_timed_out = (
-            onset_timeout_seconds is not None
-            and onset_age is not None
-            and (onset_age > 0.0 if self.onset_timeout_bars == 0 else onset_age >= onset_timeout_seconds)
-        )
-        musical_activity_active = observation.signal_active and not onset_timed_out
+            self._pending_octave_since_seconds = None
 
         if not musical_activity_active and self._last_pattern is not None:
             effective_intensity = self._last_effective_intensity

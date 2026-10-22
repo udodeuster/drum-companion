@@ -359,7 +359,7 @@ class TestAudioAnalysis(unittest.TestCase):
         already_scheduled = tuple(output.scheduled)
         ambiguous_observations = [
             min(observations, key=lambda item: abs(item.timestamp_seconds - timestamp))
-            for timestamp in (2.0, 2.5, 3.0)
+            for timestamp in (2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0)
         ]
         decisions = []
 
@@ -376,7 +376,10 @@ class TestAudioAnalysis(unittest.TestCase):
             decisions.append(decision)
             coordinator.update(decision)
 
-        self.assertEqual([decision.tempo_bpm for decision in decisions], [120.0, 120.0, 60.0])
+        self.assertEqual(
+            [decision.tempo_bpm for decision in decisions],
+            [120.0, 120.0, 120.0, 120.0, 120.0, 120.0, 60.0],
+        )
         self.assertTrue(decisions[0].holding_stable_tempo)
         self.assertEqual(coordinator.scheduler.tempo_bpm, 60.0)
         self.assertEqual(tuple(output.scheduled[: len(already_scheduled)]), already_scheduled)
@@ -467,33 +470,9 @@ class TestAudioAnalysis(unittest.TestCase):
                 self.sample_bank = bank
                 self.frame_position = 0
                 self.scheduled = []
-                self.gain_ramps = []
 
             def schedule(self, event, frame_position):
                 self.scheduled.append((frame_position, event))
-
-            def gain_at_frame(self, frame_position):
-                gain = 1.0
-                for start_frame, end_frame, start_gain, end_gain in self.gain_ramps:
-                    if frame_position < start_frame:
-                        break
-                    if frame_position < end_frame:
-                        progress = (frame_position - start_frame) / (end_frame - start_frame)
-                        return start_gain + (end_gain - start_gain) * progress
-                    gain = end_gain
-                return gain
-
-            def schedule_gain_ramp(self, start_frame, end_frame, target_gain):
-                start_gain = self.gain_at_frame(start_frame)
-                self.gain_ramps = [ramp for ramp in self.gain_ramps if ramp[0] < start_frame]
-                self.gain_ramps.append((start_frame, end_frame, start_gain, target_gain))
-
-            def gain_curve(self, frame_count):
-                return np.fromiter(
-                    (self.gain_at_frame(frame) for frame in range(frame_count)),
-                    dtype=np.float32,
-                    count=frame_count,
-                )
 
         output = OfflineOutput()
         coordinator = PlaybackCoordinator(output, horizon_seconds=0.5, lead_in_seconds=0.05)
@@ -519,17 +498,17 @@ class TestAudioAnalysis(unittest.TestCase):
             for frame_position, event in output.scheduled
         ]
         rendered = mixer.render_events(render_events, len(audio) + sample_rate)
-        rendered *= output.gain_curve(len(rendered))[:, np.newaxis]
         self.assertGreater(float(np.sum(np.square(rendered))), 0.0)
         self.assertLessEqual(float(np.max(np.abs(rendered))), 1.0)
-        fade = next(ramp for ramp in output.gain_ramps if ramp[3] == 0.0)
-        recovery = next(ramp for ramp in output.gain_ramps if ramp[3] == 1.0)
-        self.assertTrue(any(frame == recovery[0] for frame, _ in output.scheduled))
-        self.assertGreater(float(np.sum(np.square(rendered[fade[0] : fade[1]]))), 0.0)
-        self.assertEqual(output.gain_at_frame(fade[1]), 0.0)
-        self.assertEqual(recovery[0], fade[1])
-        self.assertGreater(output.gain_at_frame(recovery[1] - 1), 0.0)
-        self.assertGreater(float(np.sum(np.square(rendered[recovery[1] :]))), 0.0)
+        pause_start = sample_rate * 4
+        pause_end = sample_rate * 9
+        self.assertTrue(
+            any(pause_start <= frame < pause_end for frame, _ in output.scheduled)
+        )
+        self.assertGreater(
+            float(np.sum(np.square(rendered[pause_start:pause_end]))),
+            0.0,
+        )
 
 
 if __name__ == "__main__":

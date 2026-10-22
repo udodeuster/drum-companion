@@ -402,9 +402,6 @@ class PlaybackCoordinator:
         self.horizon_seconds = horizon_seconds
         self.lead_in_seconds = lead_in_seconds
         self.scheduler: GrooveScheduler | None = None
-        self.inactivity_transition_frames: tuple[int, int, int] | None = None
-        self.resume_ramp_frames: tuple[int, int] | None = None
-        self._musically_inactive = False
 
     def update(self, decision: GrooveDecision) -> int:
         if decision.tempo_bpm is None and self.scheduler is None:
@@ -424,27 +421,6 @@ class PlaybackCoordinator:
 
         self.scheduler.update_decision(decision)
         sample_rate = self.output.sample_bank.sample_rate
-        musical_activity_active = decision.signal_active and decision.musical_activity_active
-        if not musical_activity_active and not self._musically_inactive:
-            transition_start = self.scheduler.next_downbeat_frame(self.output.frame_position)
-            hold_end = transition_start + self.scheduler.bar_frame_count
-            fade_end = hold_end + self.scheduler.bar_frame_count
-            self.inactivity_transition_frames = (transition_start, hold_end, fade_end)
-            self.resume_ramp_frames = None
-            self._musically_inactive = True
-            schedule_gain_ramp = getattr(self.output, "schedule_gain_ramp", None)
-            if schedule_gain_ramp is not None:
-                schedule_gain_ramp(hold_end, fade_end, 0.0)
-        elif musical_activity_active and self._musically_inactive:
-            resume_start = self.scheduler.next_downbeat_frame(self.output.frame_position)
-            beat_frames = round(60.0 / self.scheduler.tempo_bpm * sample_rate)
-            self.resume_ramp_frames = (resume_start, resume_start + beat_frames)
-            self.inactivity_transition_frames = None
-            self._musically_inactive = False
-            schedule_gain_ramp = getattr(self.output, "schedule_gain_ramp", None)
-            if schedule_gain_ramp is not None:
-                schedule_gain_ramp(*self.resume_ramp_frames, 1.0)
-
         horizon_frame = self.output.frame_position + round(self.horizon_seconds * sample_rate)
         queued = 0
         while self.scheduler.next_bar_frame <= horizon_frame:

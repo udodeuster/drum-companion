@@ -146,11 +146,18 @@ class TestDrumCompanionScaffold(unittest.TestCase):
         second_candidate = follower.update(
             AudioAnalysisObservation(3.0, (3.0,), 60.0, 0.9, 0.5, 0.9)
         )
+        later_candidates = [
+            follower.update(
+                AudioAnalysisObservation(timestamp, (timestamp,), 60.0, 0.9, 0.5, 0.9)
+            )
+            for timestamp in (3.5, 4.0, 4.5, 5.0)
+        ]
         confirmed_candidate = follower.update(
-            AudioAnalysisObservation(3.5, (3.5,), 60.0, 0.9, 0.5, 0.9)
+            AudioAnalysisObservation(5.5, (5.5,), 60.0, 0.9, 0.5, 0.9)
         )
 
         self.assertEqual(second_candidate.tempo_bpm, 120.0)
+        self.assertTrue(all(decision.tempo_bpm == 120.0 for decision in later_candidates))
         self.assertEqual(confirmed_candidate.tempo_bpm, 60.0)
         self.assertFalse(confirmed_candidate.holding_stable_tempo)
 
@@ -162,10 +169,13 @@ class TestDrumCompanionScaffold(unittest.TestCase):
             double_time_follower.update(
                 AudioAnalysisObservation(timestamp, (timestamp,), 120.0, 0.9, 0.5, 0.9)
             )
-            for timestamp in (1.5, 2.0, 2.5)
+            for timestamp in (1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5)
         ]
 
-        self.assertEqual([decision.tempo_bpm for decision in double_time_candidates], [60.0, 60.0, 120.0])
+        self.assertEqual(
+            [decision.tempo_bpm for decision in double_time_candidates],
+            [60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 120.0],
+        )
 
     def test_groove_follower_timeout_is_measured_in_bars(self):
         for timeout_bars in (0, 1, 2, 4):
@@ -193,6 +203,30 @@ class TestDrumCompanionScaffold(unittest.TestCase):
                 self.assertTrue(active.musical_activity_active)
                 self.assertFalse(timed_out.musical_activity_active)
                 self.assertEqual(timed_out.tempo_bpm, 120.0)
+
+    def test_groove_follower_holds_tempo_after_no_onset_timeout(self):
+        follower = GrooveFollower(
+            style="rock",
+            feel="tight",
+            intensity=0.8,
+            onset_timeout_bars=1,
+        )
+        established = follower.update(
+            AudioAnalysisObservation(0.5, (0.5,), 120.0, 0.9, 0.5, 0.9)
+        )
+        active = follower.update(
+            AudioAnalysisObservation(2.49, (), 120.0, 0.9, 0.5, 0.9)
+        )
+        timed_out = follower.update(
+            AudioAnalysisObservation(2.5, (), 150.0, 0.9, 0.5, 0.9)
+        )
+
+        self.assertEqual(established.tempo_bpm, 120.0)
+        self.assertTrue(active.musical_activity_active)
+        self.assertEqual(active.tempo_bpm, 120.0)
+        self.assertFalse(timed_out.musical_activity_active)
+        self.assertEqual(timed_out.tempo_bpm, 120.0)
+        self.assertEqual(timed_out.pattern, active.pattern)
 
     def test_cli_lists_input_devices_without_opening_capture(self):
         from drum_companion.app import run_cli
