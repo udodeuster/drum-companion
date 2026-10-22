@@ -138,6 +138,7 @@ class GrooveFollower:
         intensity: float,
         phrase: str = "verse",
         onset_timeout_bars: int = 1,
+        lock_pulse_octave: bool = False,
     ) -> None:
         if isinstance(onset_timeout_bars, bool) or onset_timeout_bars not in {0, 1, 2, 4}:
             raise ValueError("onset_timeout_bars must be one of 0, 1, 2, or 4 bars")
@@ -146,6 +147,8 @@ class GrooveFollower:
         self.intensity = max(0.0, min(1.0, intensity))
         self.phrase = phrase
         self.onset_timeout_bars = onset_timeout_bars
+        # With drum playback, microphone bleed of the drums can look like a double-time pulse.
+        self.lock_pulse_octave = lock_pulse_octave
         self._last_stable_tempo: float | None = None
         self._last_detected_onset: float | None = None
         self._last_pattern: tuple[str, ...] | None = None
@@ -187,7 +190,9 @@ class GrooveFollower:
                 self._last_stable_tempo is not None
                 and self._is_octave_tempo_change(self._last_stable_tempo, observation.tempo_bpm)
             ):
-                if (
+                if self.lock_pulse_octave:
+                    pass
+                elif (
                     self._pending_octave_tempo is not None
                     and abs(observation.tempo_bpm - self._pending_octave_tempo)
                     <= self._pending_octave_tempo * 0.05
@@ -257,4 +262,4 @@ class GrooveFollower:
     @staticmethod
     def _is_octave_tempo_change(stable_tempo: float, candidate_tempo: float) -> bool:
         ratio = candidate_tempo / stable_tempo
-        return 0.46 <= ratio <= 0.54 or 1.85 <= ratio <= 2.15
+        return any(abs(ratio / factor - 1.0) <= 0.15 for factor in (0.25, 1 / 3, 0.5, 2.0, 3.0, 4.0))

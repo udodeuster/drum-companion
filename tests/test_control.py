@@ -104,6 +104,18 @@ class TestLiveAudioController(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsupported setting"):
             controller.update_settings({"unknown": True})
 
+    def test_tempo_range_settings_are_validated_together(self):
+        controller = LiveAudioController()
+
+        self.assertEqual((controller.settings.min_tempo_bpm, controller.settings.max_tempo_bpm), (40, 140))
+        updated = controller.update_settings({"min_tempo_bpm": 50, "max_tempo_bpm": 120})
+        self.assertEqual((updated["min_tempo_bpm"], updated["max_tempo_bpm"]), (50, 120))
+        with self.assertRaisesRegex(ValueError, "twice"):
+            controller.update_settings({"min_tempo_bpm": 70})
+        with self.assertRaisesRegex(ValueError, "min_tempo_bpm"):
+            controller.update_settings({"min_tempo_bpm": 10})
+        self.assertEqual(controller.settings.min_tempo_bpm, 50)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -110,11 +110,6 @@
         <div class="settings-grid">
           <div><label for="style">Style</label><select id="style"><option>rock</option><option>folk</option><option>indie</option></select></div>
           <div><label for="feel">Feel</label><select id="feel"><option>tight</option><option>relaxed</option></select></div>
-          <div><label for="phrase">Phrase</label><select id="phrase"><option>verse</option><option>chorus</option><option>bridge</option></select></div>
-          <div>
-            <label for="onset-timeout-bars">No-onset timeout</label>
-            <select id="onset-timeout-bars"><option value="0">0 bars</option><option value="1">1 bar</option><option value="2">2 bars</option><option value="4">4 bars</option></select>
-          </div>
           <div>
             <div class="range-heading"><label for="intensity">Intensity</label><output id="intensity-value">0.80</output></div>
             <input id="intensity" type="range" min="0" max="1" step="0.01" value="0.8">
@@ -123,10 +118,18 @@
             <div class="range-heading"><label for="master-level">Master level</label><output id="master-level-value">0.75</output></div>
             <input id="master-level" type="range" min="0" max="1" step="0.01" value="0.75">
           </div>
+          <div>
+            <div class="range-heading"><label for="min-tempo">Min BPM</label><output id="min-tempo-value">40</output></div>
+            <input id="min-tempo" type="range" min="30" max="150" step="1" value="40">
+          </div>
+          <div>
+            <div class="range-heading"><label for="max-tempo">Max BPM</label><output id="max-tempo-value">140</output></div>
+            <input id="max-tempo" type="range" min="60" max="300" step="1" value="140">
+          </div>
           <label class="toggle"><input id="muted" type="checkbox"> Mute drum output</label>
         </div>
         <p class="hint">Tight keeps eighths straight; relaxed uses 55% swing with quiet rock/folk ghost snares. Intensity shapes strength and extra accents; core kick and backbeat remain above zero. Changes affect future bars only.</p>
-        <p class="hint">Tempo holds through half/double-time ambiguity until three reliable estimates agree. With active input, 0/1/2/4 bars without attacks controls when the hold and fade begin.</p>
+        <p class="hint">Tempo holds through half/double-time ambiguity until three reliable estimates agree. Once started, the groove and tempo keep playing until you stop.</p>
       </section>
     </div>
   </main>
@@ -184,8 +187,7 @@
       document.querySelector("#pattern").textContent = status.pattern.length ? status.pattern.join("  ") : "Waiting for live analysis";
       if (status.error || status.output_error) showMessage(status.error || status.output_error);
       const settings = status.settings;
-      for (const name of ["style", "feel", "phrase"]) document.querySelector(`#${name}`).value = settings[name];
-      document.querySelector("#onset-timeout-bars").value = settings.onset_timeout_bars;
+      for (const name of ["style", "feel"]) document.querySelector(`#${name}`).value = settings[name];
       for (const name of ["muted", "drums-enabled"]) {
         const key = name === "drums-enabled" ? "drums_enabled" : name;
         document.querySelector(`#${name}`).checked = settings[key];
@@ -193,6 +195,13 @@
       for (const [name, key] of [["intensity", "intensity"], ["master-level", "master_level"]]) {
         document.querySelector(`#${name}`).value = settings[key];
         document.querySelector(`#${name}-value`).value = Number(settings[key]).toFixed(2);
+      }
+      for (const [id, key] of [["min-tempo", "min_tempo_bpm"], ["max-tempo", "max_tempo_bpm"]]) {
+        const slider = document.querySelector(`#${id}`);
+        if (document.activeElement !== slider) {
+          slider.value = settings[key];
+          document.querySelector(`#${id}-value`).value = String(settings[key]);
+        }
       }
     };
     const refreshStatus = async () => {
@@ -235,12 +244,9 @@
       await api("/api/stop", { method: "POST", body: "{}" });
       await refreshStatus();
     }));
-    for (const name of ["style", "feel", "phrase"]) {
+    for (const name of ["style", "feel"]) {
       document.querySelector(`#${name}`).addEventListener("change", (event) => updateSetting(name, event.target.value));
     }
-    document.querySelector("#onset-timeout-bars").addEventListener("change", (event) => {
-      updateSetting("onset_timeout_bars", Number(event.target.value));
-    });
     for (const [id, setting] of [["input-device", "input_device"], ["output-device", "output_device"]]) {
       document.querySelector(`#${id}`).addEventListener("change", (event) => {
         updateSetting(setting, event.target.value === "" ? null : Number(event.target.value));
@@ -255,6 +261,25 @@
         document.querySelector(`#${id}-value`).value = Number(range.value).toFixed(2);
         clearTimeout(rangeTimers.get(id));
         rangeTimers.set(id, setTimeout(() => updateSetting(setting, Number(range.value)), 120));
+      });
+    }
+    const tempoSliders = [document.querySelector("#min-tempo"), document.querySelector("#max-tempo")];
+    let tempoTimer;
+    for (const slider of tempoSliders) {
+      slider.addEventListener("input", () => {
+        const [minSlider, maxSlider] = tempoSliders;
+        // The analysis needs at least one octave between min and max.
+        if (slider === minSlider && Number(maxSlider.value) < 2 * Number(minSlider.value)) maxSlider.value = 2 * Number(minSlider.value);
+        if (slider === maxSlider && Number(maxSlider.value) < 2 * Number(minSlider.value)) minSlider.value = Math.floor(Number(maxSlider.value) / 2);
+        for (const item of tempoSliders) document.querySelector(`#${item.id}-value`).value = item.value;
+        clearTimeout(tempoTimer);
+        tempoTimer = setTimeout(() => withMessage(async () => {
+          await api("/api/settings", {
+            method: "PATCH",
+            body: JSON.stringify({ min_tempo_bpm: Number(minSlider.value), max_tempo_bpm: Number(maxSlider.value) })
+          });
+          await refreshStatus();
+        }), 200);
       });
     }
     const initialize = async () => {

@@ -204,6 +204,33 @@ class TestDrumCompanionScaffold(unittest.TestCase):
                 self.assertFalse(timed_out.musical_activity_active)
                 self.assertEqual(timed_out.tempo_bpm, 120.0)
 
+    def test_groove_follower_holds_tempo_against_loose_multiples(self):
+        for candidate in (178.0, 176.0, 240.0, 40.0):
+            with self.subTest(candidate=candidate):
+                follower = GrooveFollower(style="rock", feel="tight", intensity=0.8)
+                follower.update(AudioAnalysisObservation(1.0, (1.0,), 80.0, 0.9, 0.5, 0.9))
+                decisions = [
+                    follower.update(
+                        AudioAnalysisObservation(t, (t,), candidate, 0.9, 0.5, 0.9)
+                    )
+                    for t in (1.5, 2.0, 2.5, 3.0, 3.5)
+                ]
+                self.assertTrue(all(d.tempo_bpm == 80.0 for d in decisions))
+
+    def test_groove_follower_locks_pulse_octave_while_drums_play(self):
+        follower = GrooveFollower(
+            style="rock", feel="tight", intensity=0.8, lock_pulse_octave=True
+        )
+        follower.update(AudioAnalysisObservation(1.0, (1.0,), 80.0, 0.9, 0.5, 0.9))
+        decisions = [
+            follower.update(AudioAnalysisObservation(t, (t,), 160.0, 0.9, 0.5, 0.9))
+            for t in (2.0, 4.0, 6.0, 8.0, 10.0)
+        ]
+        shifted = follower.update(AudioAnalysisObservation(11.0, (11.0,), 100.0, 0.9, 0.5, 0.9))
+
+        self.assertTrue(all(d.tempo_bpm == 80.0 for d in decisions))
+        self.assertEqual(shifted.tempo_bpm, 100.0)
+
     def test_groove_follower_holds_tempo_after_no_onset_timeout(self):
         follower = GrooveFollower(
             style="rock",
@@ -261,7 +288,7 @@ class TestDrumCompanionScaffold(unittest.TestCase):
             result = run_cli(["--live", "--play-drums", "--output-device", "3", "--style", "folk"])
 
         self.assertEqual(result, 0)
-        run_live.assert_called_once_with(None, "folk", "tight", 0.8, "verse", True, 3, 0.75, 1)
+        run_live.assert_called_once_with(None, "folk", "tight", 0.8, "verse", True, 3, 0.75, 1, 40, 140)
 
     def test_cli_passes_onset_timeout_to_web_settings(self):
         from drum_companion.app import parse_args, run_cli

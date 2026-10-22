@@ -14,6 +14,14 @@ from drum_companion.audio.output import PlaybackCoordinator, SampleBank, SampleM
 from drum_companion.models import AudioAnalysisObservation
 
 
+class TempoRangeTests(unittest.TestCase):
+    def test_tempo_range_validation(self):
+        analyzer = AudioAnalyzer(16000, min_tempo_bpm=40, max_tempo_bpm=140)
+        self.assertEqual((analyzer.min_tempo_bpm, analyzer.max_tempo_bpm), (40.0, 140.0))
+        with self.assertRaises(ValueError):
+            analyzer.set_tempo_range(100, 150)
+
+
 def make_pulse_track(sample_rate: int = 22050) -> np.ndarray:
     duration_seconds = 12.0
     signal = np.zeros(int(sample_rate * duration_seconds), dtype=np.float32)

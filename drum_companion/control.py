@@ -31,6 +31,8 @@ class LiveSettings:
     intensity: float = 0.8
     master_level: float = 0.75
     onset_timeout_bars: int = 1
+    min_tempo_bpm: int = 40
+    max_tempo_bpm: int = 140
     muted: bool = False
 
 
@@ -114,7 +116,9 @@ class LiveAudioController:
         with self._lock:
             if self._state in {"starting", "running", "stopping"} and self._device_fields.intersection(normalized):
                 raise DeviceRestartRequired("Stop the live session before changing audio devices or drum playback")
-            self._settings = replace(self._settings, **normalized)
+            candidate = replace(self._settings, **normalized)
+            self._validate_settings(candidate)
+            self._settings = candidate
             output = self._output
             settings = self._settings
 
@@ -170,6 +174,7 @@ class LiveAudioController:
                 intensity=settings.intensity,
                 phrase=settings.phrase,
                 onset_timeout_bars=settings.onset_timeout_bars,
+                lock_pulse_octave=settings.drums_enabled,
             )
             with self._lock:
                 self._state = "running"
@@ -191,7 +196,13 @@ class LiveAudioController:
                     output.set_muted(settings.muted)
 
                 if analyzer is None:
-                    analyzer = AudioAnalyzer(block.sample_rate)
+                    analyzer = AudioAnalyzer(
+                        block.sample_rate,
+                        min_tempo_bpm=settings.min_tempo_bpm,
+                        max_tempo_bpm=settings.max_tempo_bpm,
+                    )
+                else:
+                    analyzer.set_tempo_range(settings.min_tempo_bpm, settings.max_tempo_bpm)
                 observation = analyzer.process_block(block)
                 if observation is None:
                     continue
@@ -268,6 +279,10 @@ class LiveAudioController:
             if isinstance(value, bool) or not isinstance(value, int) or value not in {0, 1, 2, 4}:
                 raise ValueError("onset_timeout_bars must be one of 0, 1, 2, or 4 bars")
             return value
+        if name in {"min_tempo_bpm", "max_tempo_bpm"}:
+            if isinstance(value, bool) or not isinstance(value, int) or not 30 <= value <= 300:
+                raise ValueError(f"{name} must be a whole number between 30 and 300")
+            return value
         if name in {"intensity", "master_level"}:
             if isinstance(value, bool):
                 raise ValueError(f"{name} must be a number between 0.0 and 1.0")
@@ -284,3 +299,5 @@ class LiveAudioController:
     def _validate_settings(cls, settings: LiveSettings) -> None:
         for name, value in asdict(settings).items():
             cls._normalize_setting(name, value)
+        if settings.max_tempo_bpm < 2 * settings.min_tempo_bpm:
+            raise ValueError("max_tempo_bpm must be at least twice min_tempo_bpm")

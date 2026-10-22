@@ -37,6 +37,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=1,
         help="Bars without detected onsets before the groove begins its stop transition.",
     )
+    parser.add_argument(
+        "--min-tempo",
+        type=int,
+        default=40,
+        help="Lowest BPM the tempo analysis reports (30-300, default: 40).",
+    )
+    parser.add_argument(
+        "--max-tempo",
+        type=int,
+        default=140,
+        help="Highest BPM the tempo analysis reports (must be at least twice --min-tempo, default: 140).",
+    )
     parser.add_argument("--interactive", action="store_true", help="Enter a small terminal interaction loop for tuning the groove.")
     parser.add_argument("--list-inputs", action="store_true", help="List available microphone input devices.")
     parser.add_argument("--list-outputs", action="store_true", help="List available drum playback devices.")
@@ -111,6 +123,8 @@ def run_live(
     output_device: int | None = None,
     master_level: float = 0.75,
     onset_timeout_bars: int = 1,
+    min_tempo_bpm: int = 40,
+    max_tempo_bpm: int = 140,
 ) -> int:
     capture = MicrophoneCapture(device=device)
     analyzer: AudioAnalyzer | None = None
@@ -120,6 +134,7 @@ def run_live(
         intensity=intensity,
         phrase=phrase,
         onset_timeout_bars=onset_timeout_bars,
+        lock_pulse_octave=play_drums,
     )
     output = SampleOutput(device=output_device) if play_drums else None
     coordinator = PlaybackCoordinator(output) if output is not None else None
@@ -146,7 +161,11 @@ def run_live(
             except Empty:
                 continue
             if analyzer is None:
-                analyzer = AudioAnalyzer(block.sample_rate)
+                analyzer = AudioAnalyzer(
+                    block.sample_rate,
+                    min_tempo_bpm=min_tempo_bpm,
+                    max_tempo_bpm=max_tempo_bpm,
+                )
             observation = analyzer.process_block(block)
             if observation is None:
                 continue
@@ -177,7 +196,15 @@ def run_live(
             output.stop()
 
 
+def _check_tempo_range(args: argparse.Namespace) -> None:
+    if not 30 <= args.min_tempo <= 300 or not 30 <= args.max_tempo <= 300:
+        raise SystemExit("--min-tempo and --max-tempo must be between 30 and 300")
+    if args.max_tempo < 2 * args.min_tempo:
+        raise SystemExit("--max-tempo must be at least twice --min-tempo")
+
+
 def run_web(args: argparse.Namespace) -> int:
+    _check_tempo_range(args)
     if args.web_port < 1 or args.web_port > 65535:
         raise SystemExit("--web-port must be between 1 and 65535")
     if args.master_level < 0.0 or args.master_level > 1.0:
@@ -192,6 +219,8 @@ def run_web(args: argparse.Namespace) -> int:
         intensity=args.intensity,
         master_level=args.master_level,
         onset_timeout_bars=args.onset_timeout_bars,
+        min_tempo_bpm=args.min_tempo,
+        max_tempo_bpm=args.max_tempo,
     )
     controller = LiveAudioController(settings)
     pairing_pin = f"{secrets.randbelow(1_000_000):06d}"
@@ -278,6 +307,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     if args.web:
         return run_web(args)
     if args.live:
+        _check_tempo_range(args)
         if args.master_level < 0.0 or args.master_level > 1.0:
             raise SystemExit("--master-level must be between 0.0 and 1.0")
         return run_live(
@@ -290,6 +320,8 @@ def run_cli(argv: list[str] | None = None) -> int:
             args.output_device,
             args.master_level,
             args.onset_timeout_bars,
+            args.min_tempo,
+            args.max_tempo,
         )
     if args.play_drums or args.output_device is not None:
         raise SystemExit("--play-drums and --output-device require --live")

@@ -41,9 +41,12 @@ class AudioAnalyzer:
         window_seconds: float = 6.0,
         update_interval_seconds: float = 0.5,
         hop_length: int = 512,
+        min_tempo_bpm: float = 60.0,
+        max_tempo_bpm: float = 180.0,
     ) -> None:
         if sample_rate <= 0 or window_seconds <= 0 or update_interval_seconds <= 0:
             raise ValueError("sample rate and analysis durations must be positive")
+        self.set_tempo_range(min_tempo_bpm, max_tempo_bpm)
         self.sample_rate = sample_rate
         self.window_samples = int(sample_rate * window_seconds)
         self.update_interval_seconds = update_interval_seconds
@@ -54,6 +57,13 @@ class AudioAnalyzer:
         self._last_analysis_seconds = 0.0
         self._last_emitted_onset = -1.0
         self._last_detected_onset = -1.0
+
+    def set_tempo_range(self, min_tempo_bpm: float, max_tempo_bpm: float) -> None:
+        # A range narrower than one octave could not fold every estimate into it.
+        if min_tempo_bpm <= 0 or max_tempo_bpm < 2.0 * min_tempo_bpm:
+            raise ValueError("tempo range must be positive and span at least one octave")
+        self.min_tempo_bpm = float(min_tempo_bpm)
+        self.max_tempo_bpm = float(max_tempo_bpm)
 
     def process_block(self, block: AudioBlock) -> AudioAnalysisObservation | None:
         if block.sample_rate != self.sample_rate:
@@ -136,9 +146,9 @@ class AudioAnalyzer:
         )
         tempo_bpm = float(np.asarray(tempo_values).reshape(-1)[0])
         if np.isfinite(tempo_bpm) and tempo_bpm > 0:
-            while tempo_bpm < 60.0:
+            while tempo_bpm < self.min_tempo_bpm:
                 tempo_bpm *= 2.0
-            while tempo_bpm > 180.0:
+            while tempo_bpm > self.max_tempo_bpm:
                 tempo_bpm /= 2.0
         else:
             tempo_bpm = 0.0

@@ -102,12 +102,13 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b"55% swing", page)
         self.assertIn(b"core kick and backbeat remain above zero", page)
         self.assertIn(b"three reliable estimates agree", page)
-        self.assertIn(b"0/1/2/4 bars without attacks", page)
+        self.assertNotIn(b'id="phrase"', page)
+        self.assertNotIn(b'id="onset-timeout-bars"', page)
         self.assertTrue(
             {
                 "start", "stop", "tempo", "signal", "confidence", "energy", "pattern",
-                "input-device", "output-device", "drums-enabled", "style", "feel", "phrase",
-                "onset-timeout-bars", "intensity", "master-level", "muted", "pairing-qr",
+                "input-device", "output-device", "drums-enabled", "style",                 "feel",
+                                "intensity", "master-level", "muted", "pairing-qr",
                 "display-pin", "phone-link",
             }.issubset(parser.ids)
         )

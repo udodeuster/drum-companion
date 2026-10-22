@@ -36,10 +36,12 @@ python main.py --live --play-drums --output-device 3 --master-level 0.7 --onset-
 ```
 
 `--onset-timeout-bars` accepts `0`, `1`, `2`, or `4` bars and defaults to `1`. It controls how long the app waits without detected attacks before treating an otherwise active input as musically inactive; zero makes the first onset gap eligible, while longer values preserve sparse playing longer. Once a tempo and groove have been established, the last groove continues at its current tempo and intensity through input silence and timeout inactivity until playback is manually stopped. When input returns, new reliable tempo and groove decisions update future bars without restarting the bar phase or moving already scheduled hits.
+
+`--min-tempo` and `--max-tempo` (defaults `40` and `140`) set the BPM range the tempo analysis reports; estimates outside it are doubled or halved into the range, so the maximum must be at least twice the minimum. The web UI has matching "Min BPM" / "Max BPM" sliders that apply live.
 
 The tight feel keeps eighth notes straight. Relaxed feel delays offbeat eighth notes for a 55% swing; rock and folk add quiet offbeat ghost snares, while indie does not. Intensity changes accompaniment strength and supplementary accents/hi-hat density; the core kick and backbeat remain while intensity is above zero. Master level independently controls overall output volume.
 
-When a tempo estimate is near half or double the last stable pulse, the app holds the prior pulse until consistent reliable estimates support the alternative for at least three seconds. Other reliable tempo changes remain responsive. The live view exposes current confidence while holding the prior pulse.
+When a tempo estimate is near a multiple or fraction of the last stable pulse (about ½, ⅓, ¼, 2×, 3× or 4×, with 15% tolerance), the app holds the prior pulse until consistent reliable estimates support the alternative for at least three seconds. While drums are playing, such half/double-time estimates are ignored entirely, because the microphone can hear the drums' own eighth notes as a double-time pulse. Other reliable tempo changes remain responsive. The live view exposes current confidence while holding the prior pulse.
 
 During playback, press `M` to mute/unmute, `+` or `-` to adjust output level, and `Q` or `Ctrl+C` to stop. The bundled CC0 starter kit's asset sources and license details are in `drum_companion/assets/drums/manifest.json`. Only the drums are sent to the selected output; guitar/voice input is not monitored through it.
 
@@ -49,7 +51,7 @@ For same-computer or phone control on a private network, start the local browser
 python main.py --web
 ```
 
-Open the printed localhost URL on the computer and scan the QR code shown there with your phone. The QR opens the page only; enter the PIN displayed on the computer manually on your phone. The browser's **No-onset timeout** setting accepts `0`, `1`, `2`, or `4` bars and applies immediately to the live session. The panel does not use a cloud service. Keep it on a trusted private network and do not forward its port through your router; plain HTTP does not encrypt traffic on the LAN.
+Open the printed localhost URL on the computer and scan the QR code shown there with your phone. The QR opens the page only; enter the PIN displayed on the computer manually on your phone. The panel does not use a cloud service. Keep it on a trusted private network and do not forward its port through your router; plain HTTP does not encrypt traffic on the LAN.
 
 If the phone cannot connect, set the computer's Wi-Fi network profile to **Private** and allow Python through Windows Defender Firewall on private networks. Guest Wi-Fi or router client isolation can also prevent devices from reaching each other. Do not allow access on public networks.
 
