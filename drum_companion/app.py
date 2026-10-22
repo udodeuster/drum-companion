@@ -30,6 +30,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--style", type=str, default="rock", help="Groove style: rock, folk, or indie.")
     parser.add_argument("--feel", type=str, default="tight", help="Groove feel: tight or relaxed.")
     parser.add_argument("--intensity", type=float, default=0.8, help="Accompaniment energy from 0.0 to 1.0.")
+    parser.add_argument(
+        "--onset-timeout-bars",
+        type=int,
+        choices=(0, 1, 2, 4),
+        default=1,
+        help="Bars without detected onsets before the groove begins its stop transition.",
+    )
     parser.add_argument("--interactive", action="store_true", help="Enter a small terminal interaction loop for tuning the groove.")
     parser.add_argument("--list-inputs", action="store_true", help="List available microphone input devices.")
     parser.add_argument("--list-outputs", action="store_true", help="List available drum playback devices.")
@@ -103,10 +110,17 @@ def run_live(
     play_drums: bool = False,
     output_device: int | None = None,
     master_level: float = 0.75,
+    onset_timeout_bars: int = 1,
 ) -> int:
     capture = MicrophoneCapture(device=device)
     analyzer: AudioAnalyzer | None = None
-    follower = GrooveFollower(style=style, feel=feel, intensity=intensity, phrase=phrase)
+    follower = GrooveFollower(
+        style=style,
+        feel=feel,
+        intensity=intensity,
+        phrase=phrase,
+        onset_timeout_bars=onset_timeout_bars,
+    )
     output = SampleOutput(device=output_device) if play_drums else None
     coordinator = PlaybackCoordinator(output) if output is not None else None
     try:
@@ -177,6 +191,7 @@ def run_web(args: argparse.Namespace) -> int:
         phrase=args.phrase,
         intensity=args.intensity,
         master_level=args.master_level,
+        onset_timeout_bars=args.onset_timeout_bars,
     )
     controller = LiveAudioController(settings)
     pairing_pin = f"{secrets.randbelow(1_000_000):06d}"
@@ -274,6 +289,7 @@ def run_cli(argv: list[str] | None = None) -> int:
             args.play_drums,
             args.output_device,
             args.master_level,
+            args.onset_timeout_bars,
         )
     if args.play_drums or args.output_device is not None:
         raise SystemExit("--play-drums and --output-device require --live")

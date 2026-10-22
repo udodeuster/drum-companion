@@ -30,6 +30,7 @@ class LiveSettings:
     phrase: str = "verse"
     intensity: float = 0.8
     master_level: float = 0.75
+    onset_timeout_bars: int = 1
     muted: bool = False
 
 
@@ -168,6 +169,7 @@ class LiveAudioController:
                 feel=settings.feel,
                 intensity=settings.intensity,
                 phrase=settings.phrase,
+                onset_timeout_bars=settings.onset_timeout_bars,
             )
             with self._lock:
                 self._state = "running"
@@ -183,6 +185,7 @@ class LiveAudioController:
                 follower.feel = settings.feel
                 follower.intensity = settings.intensity
                 follower.phrase = settings.phrase
+                follower.onset_timeout_bars = settings.onset_timeout_bars
                 if output is not None:
                     output.set_master_level(settings.master_level)
                     output.set_muted(settings.muted)
@@ -261,6 +264,10 @@ class LiveAudioController:
             if not isinstance(value, str) or value.lower() not in cls._phrases:
                 raise ValueError(f"phrase must be one of {', '.join(sorted(cls._phrases))}")
             return value.lower()
+        if name == "onset_timeout_bars":
+            if isinstance(value, bool) or not isinstance(value, int) or value not in {0, 1, 2, 4}:
+                raise ValueError("onset_timeout_bars must be one of 0, 1, 2, or 4 bars")
+            return value
         if name in {"intensity", "master_level"}:
             if isinstance(value, bool):
                 raise ValueError(f"{name} must be a number between 0.0 and 1.0")

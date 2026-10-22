@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from drum_companion.models import AudioAnalysisObservation, GrooveDecision
 
 STYLE_PROFILES = {
-    "rock": {"density": 1.0, "accent": 1.0, "kick": [1, 0, 0, 0, 1, 0, 0, 0], "snare": [0, 0, 1, 0, 0, 0, 1, 0], "hihat": [1, 1, 1, 1, 1, 1, 1, 1]},
-    "folk": {"density": 0.7, "accent": 0.8, "kick": [1, 0, 0, 0, 1, 0, 0, 1], "snare": [0, 0, 1, 0, 0, 0, 1, 0], "hihat": [0, 1, 0, 1, 0, 1, 0, 1]},
-    "indie": {"density": 0.85, "accent": 0.9, "kick": [1, 0, 1, 0, 1, 0, 0, 1], "snare": [0, 0, 1, 0, 0, 0, 1, 0], "hihat": [1, 0, 1, 0, 1, 0, 1, 0]},
+    "rock": {"density": 1.0, "accent": 1.0, "kick": [1, 0, 0, 0, 1, 0, 0, 0], "snare": [0, 0, 1, 0, 0, 0, 1, 0], "hihat": [1, 1, 1, 1, 1, 1, 1, 1], "ghost_snare_steps": [1, 5]},
+    "folk": {"density": 0.7, "accent": 0.8, "kick": [1, 0, 0, 0, 1, 0, 0, 1], "snare": [0, 0, 1, 0, 0, 0, 1, 0], "hihat": [0, 1, 0, 1, 0, 1, 0, 1], "ghost_snare_steps": [1, 5]},
+    "indie": {"density": 0.85, "accent": 0.9, "kick": [1, 0, 1, 0, 1, 0, 0, 1], "snare": [0, 0, 1, 0, 0, 0, 1, 0], "hihat": [1, 0, 1, 0, 1, 0, 1, 0], "ghost_snare_steps": []},
 }
 
 
@@ -23,12 +23,16 @@ def pattern_to_events(
     tempo_bpm: float,
     *,
     bar_index: int = 0,
+    feel: str = "tight",
 ) -> tuple[DrumEvent, ...]:
-    """Translate compact pattern cells into events timed on an eighth-note grid."""
+    """Translate compact pattern cells into timed eighth-note events."""
     if tempo_bpm <= 0:
         raise ValueError("tempo_bpm must be greater than zero")
     if bar_index < 0:
         raise ValueError("bar_index must be non-negative")
+    normalized_feel = feel.lower()
+    if normalized_feel not in {"tight", "relaxed"}:
+        raise ValueError(f"Unsupported feel: {feel}")
 
     variation_bar = bar_index % 4 == 3
     events: list[DrumEvent] = []
@@ -36,6 +40,8 @@ def pattern_to_events(
         tokens = set(cell)
         accented = "A" in tokens
         offset_seconds = step_index * 30.0 / tempo_bpm
+        if normalized_feel == "relaxed" and step_index % 2:
+            offset_seconds += 0.05 * 60.0 / tempo_bpm
         instruments: list[str] = []
         if "K" in tokens:
             instruments.append("kick")
@@ -58,6 +64,8 @@ def pattern_to_events(
             }[instrument]
             velocity = min(1.0, base_velocity * (1.15 if accented else 1.0))
             events.append(DrumEvent(offset_seconds, instrument, velocity))
+        if "g" in tokens and bar_index % 4 in {1, 3}:
+            events.append(DrumEvent(offset_seconds, "snare", 0.14))
 
     return tuple(events)
 
@@ -70,15 +78,22 @@ def build_pattern(style: str, feel: str, intensity: float, bars: int = 1) -> lis
         raise ValueError(f"Unsupported style: {style}")
 
     profile = STYLE_PROFILES[normalized_style]
-    sway = 0.5 if normalized_feel == "relaxed" else 1.0
     pattern: list[str] = []
+    active = intensity > 0.0
 
     for _ in range(bars):
         for index in range(len(profile["kick"])):
-            kick = "K" if profile["kick"][index] and intensity > 0.2 else "-"
-            snare = "S" if profile["snare"][index] and sway > 0.5 else "-"
+            kick = "K" if profile["kick"][index] and active else "-"
+            snare = "S" if profile["snare"][index] and active else "-"
             hihat = "H" if profile["hihat"][index] else "-"
-            pattern.append(f"{kick}{snare}{hihat}")
+            ghost = (
+                "g"
+                if active
+                and normalized_feel == "relaxed"
+                and index in profile["ghost_snare_steps"]
+                else ""
+            )
+            pattern.append(f"{kick}{snare}{hihat}{ghost}")
 
     return pattern
 
@@ -93,16 +108,20 @@ def generate_accompaniment(phrase: str, style: str, feel: str, intensity: float)
 
     profile = STYLE_PROFILES[normalized_style]
     density_boost = 1.25 if normalized_phrase == "chorus" else 1.0
-    feel_adjustment = 0.7 if normalized_feel == "relaxed" else 1.0
-    effective_intensity = max(0.0, min(1.0, intensity)) * profile["density"] * density_boost * feel_adjustment
+    effective_intensity = max(0.0, min(1.0, intensity)) * profile["density"] * density_boost
 
     steps: list[str] = []
     for index in range(8):
         accent = "A" if index in (0, 4) and effective_intensity > 0.6 else "-"
-        kick = "K" if profile["kick"][index] and effective_intensity > 0.3 else "-"
-        snare = "S" if profile["snare"][index] and effective_intensity > 0.45 else "-"
+        kick = "K" if profile["kick"][index] and effective_intensity > 0.0 else "-"
+        snare = "S" if profile["snare"][index] and effective_intensity > 0.0 else "-"
         hihat = "H" if profile["hihat"][index] and effective_intensity > 0.2 else "-"
-        steps.append(f"{accent}{kick}{snare}{hihat}")
+        ghost = (
+            "g"
+            if normalized_feel == "relaxed" and index in profile["ghost_snare_steps"]
+            else "-"
+        )
+        steps.append(f"{accent}{kick}{snare}{hihat}{ghost}")
 
     return steps
 
@@ -110,45 +129,120 @@ def generate_accompaniment(phrase: str, style: str, feel: str, intensity: float)
 class GrooveFollower:
     """Translate analysis observations into confidence-aware groove updates."""
 
-    def __init__(self, style: str, feel: str, intensity: float, phrase: str = "verse") -> None:
+    def __init__(
+        self,
+        style: str,
+        feel: str,
+        intensity: float,
+        phrase: str = "verse",
+        onset_timeout_bars: int = 1,
+    ) -> None:
+        if isinstance(onset_timeout_bars, bool) or onset_timeout_bars not in {0, 1, 2, 4}:
+            raise ValueError("onset_timeout_bars must be one of 0, 1, 2, or 4 bars")
         self.style = style
         self.feel = feel
         self.intensity = max(0.0, min(1.0, intensity))
         self.phrase = phrase
+        self.onset_timeout_bars = onset_timeout_bars
         self._last_stable_tempo: float | None = None
+        self._last_detected_onset: float | None = None
+        self._last_pattern: tuple[str, ...] | None = None
+        self._last_effective_intensity = 0.0
+        self._pending_octave_tempo: float | None = None
+        self._pending_octave_observations = 0
 
     def update(self, observation: AudioAnalysisObservation) -> GrooveDecision:
+        if observation.onset_times_seconds:
+            self._last_detected_onset = max(observation.onset_times_seconds)
+
         reliable = (
             observation.signal_active
             and not observation.discontinuity
             and observation.tempo_bpm is not None
             and observation.tempo_confidence >= 0.35
         )
-        if reliable:
-            self._last_stable_tempo = observation.tempo_bpm
-
-        if reliable:
-            effective_intensity = self.intensity
-        elif not observation.signal_active:
-            effective_intensity = 0.0
-        elif self._last_stable_tempo is not None:
-            effective_intensity = self.intensity * 0.45
+        tempo_update_accepted = False
+        if reliable and observation.tempo_bpm is not None:
+            if (
+                self._last_stable_tempo is not None
+                and self._is_octave_tempo_change(self._last_stable_tempo, observation.tempo_bpm)
+            ):
+                if (
+                    self._pending_octave_tempo is not None
+                    and abs(observation.tempo_bpm - self._pending_octave_tempo)
+                    <= self._pending_octave_tempo * 0.05
+                ):
+                    self._pending_octave_observations += 1
+                else:
+                    self._pending_octave_tempo = observation.tempo_bpm
+                    self._pending_octave_observations = 1
+                if self._pending_octave_observations >= 3:
+                    self._last_stable_tempo = observation.tempo_bpm
+                    tempo_update_accepted = True
+                    self._pending_octave_tempo = None
+                    self._pending_octave_observations = 0
+            else:
+                self._last_stable_tempo = observation.tempo_bpm
+                tempo_update_accepted = True
+                self._pending_octave_tempo = None
+                self._pending_octave_observations = 0
         else:
-            effective_intensity = self.intensity * 0.2
+            self._pending_octave_tempo = None
+            self._pending_octave_observations = 0
 
-        pattern = tuple(
-            generate_accompaniment(
-                self.phrase,
-                self.style,
-                self.feel,
-                effective_intensity,
-            )
+        onset_timeout_seconds = (
+            240.0 * self.onset_timeout_bars / self._last_stable_tempo
+            if self._last_stable_tempo is not None
+            else None
         )
+        onset_age = (
+            observation.timestamp_seconds - self._last_detected_onset
+            if self._last_detected_onset is not None
+            else None
+        )
+        onset_timed_out = (
+            onset_timeout_seconds is not None
+            and onset_age is not None
+            and (onset_age > 0.0 if self.onset_timeout_bars == 0 else onset_age >= onset_timeout_seconds)
+        )
+        musical_activity_active = observation.signal_active and not onset_timed_out
+
+        if not musical_activity_active and self._last_pattern is not None:
+            effective_intensity = self._last_effective_intensity
+            pattern = self._last_pattern
+        else:
+            if musical_activity_active and self._last_stable_tempo is not None:
+                effective_intensity = self.intensity
+            elif musical_activity_active and reliable:
+                effective_intensity = self.intensity
+            elif not musical_activity_active:
+                effective_intensity = 0.0
+            else:
+                effective_intensity = self.intensity * 0.2
+
+            pattern = tuple(
+                generate_accompaniment(
+                    self.phrase,
+                    self.style,
+                    self.feel,
+                    effective_intensity,
+                )
+            )
+            if musical_activity_active:
+                self._last_pattern = pattern
+                self._last_effective_intensity = effective_intensity
         return GrooveDecision(
             tempo_bpm=self._last_stable_tempo,
             tempo_confidence=observation.tempo_confidence,
             effective_intensity=effective_intensity,
             pattern=pattern,
-            holding_stable_tempo=not reliable and self._last_stable_tempo is not None,
+            holding_stable_tempo=not tempo_update_accepted and self._last_stable_tempo is not None,
             signal_active=observation.signal_active,
+            musical_activity_active=musical_activity_active,
+            feel=self.feel,
         )
+
+    @staticmethod
+    def _is_octave_tempo_change(stable_tempo: float, candidate_tempo: float) -> bool:
+        ratio = candidate_tempo / stable_tempo
+        return 0.46 <= ratio <= 0.54 or 1.85 <= ratio <= 2.15

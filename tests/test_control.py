@@ -87,12 +87,20 @@ class TestLiveAudioController(unittest.TestCase):
     def test_device_selection_and_setting_validation_while_stopped(self):
         controller = LiveAudioController()
 
+        self.assertEqual(controller.settings.onset_timeout_bars, 1)
+        for timeout in (0, 1, 2, 4):
+            updated = controller.update_settings({"onset_timeout_bars": timeout})
+            self.assertEqual(updated["onset_timeout_bars"], timeout)
+
         updated = controller.update_settings({"input_device": 1, "output_device": 3})
 
         self.assertEqual(updated["input_device"], 1)
         self.assertEqual(updated["output_device"], 3)
         with self.assertRaisesRegex(ValueError, "intensity"):
             controller.update_settings({"intensity": 1.2})
+        for timeout in (-1, 3, 1.5, True):
+            with self.assertRaisesRegex(ValueError, "onset_timeout_bars"):
+                controller.update_settings({"onset_timeout_bars": timeout})
         with self.assertRaisesRegex(ValueError, "Unsupported setting"):
             controller.update_settings({"unknown": True})
 

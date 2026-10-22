@@ -112,6 +112,10 @@
           <div><label for="feel">Feel</label><select id="feel"><option>tight</option><option>relaxed</option></select></div>
           <div><label for="phrase">Phrase</label><select id="phrase"><option>verse</option><option>chorus</option><option>bridge</option></select></div>
           <div>
+            <label for="onset-timeout-bars">No-onset timeout</label>
+            <select id="onset-timeout-bars"><option value="0">0 bars</option><option value="1">1 bar</option><option value="2">2 bars</option><option value="4">4 bars</option></select>
+          </div>
+          <div>
             <div class="range-heading"><label for="intensity">Intensity</label><output id="intensity-value">0.80</output></div>
             <input id="intensity" type="range" min="0" max="1" step="0.01" value="0.8">
           </div>
@@ -121,7 +125,8 @@
           </div>
           <label class="toggle"><input id="muted" type="checkbox"> Mute drum output</label>
         </div>
-        <p class="hint">Groove changes affect future unscheduled bars. Already queued hits stay in place.</p>
+        <p class="hint">Tight keeps eighths straight; relaxed uses 55% swing with quiet rock/folk ghost snares. Intensity shapes strength and extra accents; core kick and backbeat remain above zero. Changes affect future bars only.</p>
+        <p class="hint">Tempo holds through half/double-time ambiguity until three reliable estimates agree. With active input, 0/1/2/4 bars without attacks controls when the hold and fade begin.</p>
       </section>
     </div>
   </main>
@@ -180,6 +185,7 @@
       if (status.error || status.output_error) showMessage(status.error || status.output_error);
       const settings = status.settings;
       for (const name of ["style", "feel", "phrase"]) document.querySelector(`#${name}`).value = settings[name];
+      document.querySelector("#onset-timeout-bars").value = settings.onset_timeout_bars;
       for (const name of ["muted", "drums-enabled"]) {
         const key = name === "drums-enabled" ? "drums_enabled" : name;
         document.querySelector(`#${name}`).checked = settings[key];
@@ -232,6 +238,9 @@
     for (const name of ["style", "feel", "phrase"]) {
       document.querySelector(`#${name}`).addEventListener("change", (event) => updateSetting(name, event.target.value));
     }
+    document.querySelector("#onset-timeout-bars").addEventListener("change", (event) => {
+      updateSetting("onset_timeout_bars", Number(event.target.value));
+    });
     for (const [id, setting] of [["input-device", "input_device"], ["output-device", "output_device"]]) {
       document.querySelector(`#${id}`).addEventListener("change", (event) => {
         updateSetting(setting, event.target.value === "" ? null : Number(event.target.value));

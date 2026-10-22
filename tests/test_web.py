@@ -99,11 +99,16 @@ class TestControlWebServer(unittest.TestCase):
         parser.feed(page.decode("utf-8"))
 
         self.assertEqual(len(parser.ids), len(set(parser.ids)))
+        self.assertIn(b"55% swing", page)
+        self.assertIn(b"core kick and backbeat remain above zero", page)
+        self.assertIn(b"three reliable estimates agree", page)
+        self.assertIn(b"0/1/2/4 bars without attacks", page)
         self.assertTrue(
             {
                 "start", "stop", "tempo", "signal", "confidence", "energy", "pattern",
                 "input-device", "output-device", "drums-enabled", "style", "feel", "phrase",
-                "intensity", "master-level", "muted", "pairing-qr", "display-pin", "phone-link",
+                "onset-timeout-bars", "intensity", "master-level", "muted", "pairing-qr",
+                "display-pin", "phone-link",
             }.issubset(parser.ids)
         )
 
@@ -158,7 +163,7 @@ class TestControlWebServer(unittest.TestCase):
         updated, _, updated_body = self.request(
             "/api/settings",
             method="PATCH",
-            payload={"master_level": 0.4},
+            payload={"master_level": 0.4, "onset_timeout_bars": 2},
             authenticated=True,
         )
         self.request("/api/start", method="POST", payload={}, authenticated=True)
@@ -173,6 +178,7 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(self.controller.state, "running")
         self.assertEqual(updated, 200)
         self.assertEqual(json.loads(updated_body)["settings"]["master_level"], 0.4)
+        self.assertEqual(json.loads(updated_body)["settings"]["onset_timeout_bars"], 2)
         self.assertEqual(restart, 409)
         self.assertTrue(json.loads(restart_body)["restart_required"])
 

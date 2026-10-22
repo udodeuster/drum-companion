@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from drum_companion.audio.groove import DrumEvent, pattern_to_events
+from drum_companion.audio.groove import DrumEvent, generate_accompaniment, pattern_to_events
 from drum_companion.audio.output import (
     OutputError,
     SampleBank,
@@ -68,6 +68,49 @@ class TestGrooveEventMapping(unittest.TestCase):
     def test_rejects_invalid_tempo(self):
         with self.assertRaises(ValueError):
             pattern_to_events(("K---",), tempo_bpm=0.0)
+
+    def test_relaxed_feel_swings_offbeats_by_five_percent_of_a_beat(self):
+        pattern = ("--H-",) * 8
+        tight = pattern_to_events(pattern, tempo_bpm=96.0, feel="tight")
+        relaxed = pattern_to_events(pattern, tempo_bpm=96.0, feel="relaxed")
+
+        self.assertEqual(tight[1].offset_seconds, 0.3125)
+        self.assertEqual(relaxed[1].offset_seconds, 0.34375)
+        self.assertEqual(tight[2].offset_seconds, relaxed[2].offset_seconds)
+        self.assertEqual(relaxed[-1].offset_seconds, 2.21875)
+
+    def test_maps_ghost_marker_to_quiet_snare_event(self):
+        events = pattern_to_events(("g---",), tempo_bpm=120.0, bar_index=1)
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].instrument, "snare")
+        self.assertEqual(events[0].velocity, 0.14)
+
+    def test_ghost_variation_is_deterministic_and_preserves_core_pulse(self):
+        pattern = tuple(generate_accompaniment("verse", "rock", "relaxed", 0.8))
+        bars = [
+            pattern_to_events(pattern, tempo_bpm=96.0, bar_index=bar_index, feel="relaxed")
+            for bar_index in range(4)
+        ]
+        repeated_bars = [
+            pattern_to_events(pattern, tempo_bpm=96.0, bar_index=bar_index, feel="relaxed")
+            for bar_index in range(4)
+        ]
+        ghost_counts = [
+            sum(event.instrument == "snare" and event.velocity == 0.14 for event in bar)
+            for bar in bars
+        ]
+        bar_seconds = 240.0 / 96.0
+
+        self.assertEqual(bars, repeated_bars)
+        self.assertEqual(ghost_counts, [0, 2, 0, 2])
+        for bar in bars:
+            self.assertTrue(any(event.instrument == "kick" for event in bar))
+            self.assertEqual(
+                sum(event.instrument == "snare" and event.velocity > 0.14 for event in bar),
+                2,
+            )
+            self.assertTrue(all(0.0 <= event.offset_seconds < bar_seconds for event in bar))
 
 
 class TestSampleMixer(unittest.TestCase):
@@ -185,6 +228,39 @@ class TestSampleOutput(unittest.TestCase):
         self.assertFalse(np.any(muted))
         self.assertEqual(output.frame_position, 12)
 
+    def test_frame_gain_ramp_attenuates_samples_independently_of_master_level(self):
+        streams = []
+
+        def stream_factory(**kwargs):
+            stream = FakeOutputStream(**kwargs)
+            streams.append(stream)
+            return stream
+
+        output = SampleOutput(
+            sample_bank=SampleBank(
+                {"kick": np.full((1, 2), 0.5, dtype=np.float32)},
+                sample_rate=10,
+                channels=2,
+            ),
+            device_query=lambda: OUTPUT_DEVICES,
+            stream_factory=stream_factory,
+            block_size=12,
+        )
+        output.start()
+        output.set_master_level(0.5)
+        for frame in (0, 2, 4, 6, 8, 10):
+            output.schedule(DrumEvent(0.0, "kick", 1.0), frame_position=frame)
+        output.schedule_gain_ramp(4, 8, 0.0)
+        rendered = np.empty((12, 2), dtype=np.float32)
+        streams[0].callback(rendered, 12, None, None)
+        output.stop()
+
+        self.assertAlmostEqual(float(rendered[0, 0]), 0.25)
+        self.assertAlmostEqual(float(rendered[4, 0]), 0.25)
+        self.assertAlmostEqual(float(rendered[6, 0]), 0.125)
+        self.assertEqual(float(rendered[8, 0]), 0.0)
+        self.assertEqual(float(rendered[10, 0]), 0.0)
+
     def test_stop_clears_pending_events_and_closes_stream(self):
         output = self.make_output()
         output.start()
@@ -198,6 +274,37 @@ class TestSampleOutput(unittest.TestCase):
 
 
 class TestGrooveScheduler(unittest.TestCase):
+    def test_relaxed_decision_reaches_future_scheduled_bars(self):
+        pattern = ("--H-",) * 8
+        scheduler = GrooveScheduler(pattern, tempo_bpm=96.0, sample_rate=1000)
+        decision = GrooveDecision(
+            tempo_bpm=96.0,
+            tempo_confidence=0.9,
+            effective_intensity=0.8,
+            pattern=pattern,
+            holding_stable_tempo=False,
+            signal_active=True,
+            feel="relaxed",
+        )
+
+        scheduler.update_decision(decision)
+        scheduled = scheduler.schedule_next_bar()
+        hat_frames = [
+            event.frame_position
+            for event in scheduled
+            if event.event.instrument == "closed_hat"
+        ]
+
+        self.assertEqual(hat_frames[:4], [0, 344, 625, 969])
+
+    def test_finds_next_scheduled_downbeat_after_current_frame(self):
+        scheduler = GrooveScheduler(("K---",) * 8, tempo_bpm=120.0, sample_rate=1000)
+        scheduler.schedule_next_bar()
+        scheduler.schedule_next_bar()
+
+        self.assertEqual(scheduler.next_downbeat_frame(100), 2000)
+        self.assertEqual(scheduler.next_downbeat_frame(2500), 4000)
+
     def test_tempo_change_only_changes_unscheduled_bars(self):
         pattern = ("AK-H", "-S-H", "----", "K---", "A---", "-S-H", "----", "---H")
         scheduler = GrooveScheduler(pattern, tempo_bpm=120.0, sample_rate=1000)
@@ -238,6 +345,43 @@ class TestGrooveScheduler(unittest.TestCase):
 
 
 class TestPlaybackCoordinator(unittest.TestCase):
+    def test_pause_and_recovery_transitions_align_to_scheduler_downbeats(self):
+        class FakeOutput:
+            sample_bank = SampleBank(
+                {"kick": np.ones((4, 2), dtype=np.float32)}, sample_rate=1000, channels=2
+            )
+
+            def __init__(self):
+                self.frame_position = 0
+                self.scheduled = []
+                self.scheduled_gain_ramps = []
+
+            def schedule(self, event, frame_position):
+                self.scheduled.append((frame_position, event))
+
+            def schedule_gain_ramp(self, start_frame, end_frame, target_gain):
+                self.scheduled_gain_ramps.append((start_frame, end_frame, target_gain))
+
+        output = FakeOutput()
+        coordinator = PlaybackCoordinator(output, horizon_seconds=1.0, lead_in_seconds=0.0)
+        pattern = ("K---", "----", "----", "----", "K---", "----", "----", "----")
+        active = GrooveDecision(120.0, 0.9, 0.8, pattern, False, True, True)
+        inactive = GrooveDecision(120.0, 0.0, 0.8, pattern, True, False, False)
+
+        coordinator.update(active)
+        output.frame_position = 1000
+        coordinator.update(inactive)
+        self.assertEqual(coordinator.inactivity_transition_frames, (2000, 4000, 6000))
+        self.assertEqual(output.scheduled_gain_ramps[-1], (4000, 6000, 0.0))
+        scheduled_before_resume = tuple(output.scheduled)
+        output.frame_position = 2500
+        coordinator.update(active)
+
+        self.assertEqual(coordinator.inactivity_transition_frames, None)
+        self.assertEqual(coordinator.resume_ramp_frames, (4000, 4500))
+        self.assertEqual(output.scheduled_gain_ramps[-1], (4000, 4500, 1.0))
+        self.assertEqual(tuple(output.scheduled[: len(scheduled_before_resume)]), scheduled_before_resume)
+
     def test_live_decisions_queue_future_bars_without_moving_existing_hits(self):
         class FakeOutput:
             frame_position = 0
@@ -293,24 +437,28 @@ class TestPlaybackCoordinator(unittest.TestCase):
         pattern = ("K---", "----", "----", "----", "K---", "----", "----", "----")
         coordinator = PlaybackCoordinator(output, horizon_seconds=0.5, lead_in_seconds=0.0)
         reliable = GrooveDecision(120.0, 0.9, 0.8, pattern, False, True)
-        pause = GrooveDecision(120.0, 0.1, 0.0, ("----",) * 8, True, False)
+        pause = GrooveDecision(120.0, 0.1, 0.8, pattern, True, False, False)
         recovered = GrooveDecision(150.0, 0.8, 0.8, pattern, False, True)
 
         coordinator.update(reliable)
         first_bar = np.empty((2000, 2), dtype=np.float32)
         streams[0].callback(first_bar, 2000, None, None)
         coordinator.update(pause)
-        pause_bar = np.empty((2000, 2), dtype=np.float32)
-        streams[0].callback(pause_bar, 2000, None, None)
+        hold_bar = np.empty((2000, 2), dtype=np.float32)
+        streams[0].callback(hold_bar, 2000, None, None)
+        coordinator.update(pause)
+        fade_bar = np.empty((2000, 2), dtype=np.float32)
+        streams[0].callback(fade_bar, 2000, None, None)
         coordinator.update(recovered)
         recovery_bar = np.empty((1600, 2), dtype=np.float32)
         streams[0].callback(recovery_bar, 1600, None, None)
         output.stop()
 
         self.assertGreater(float(np.max(np.abs(first_bar))), 0.0)
-        self.assertFalse(np.any(pause_bar))
+        self.assertGreater(float(np.sum(np.square(hold_bar))), 0.0)
+        self.assertLess(float(np.sum(np.square(fade_bar))), float(np.sum(np.square(hold_bar))))
         self.assertGreater(float(np.max(np.abs(recovery_bar))), 0.0)
-        self.assertEqual(output.frame_position, 5600)
+        self.assertEqual(output.frame_position, 7600)
 
 
 if __name__ == "__main__":

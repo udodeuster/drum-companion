@@ -47,6 +47,8 @@ class GrooveDecision:
     pattern: tuple[str, ...]
     holding_stable_tempo: bool
     signal_active: bool
+    musical_activity_active: bool = True
+    feel: str = "tight"
 
 
 @dataclass(frozen=True)

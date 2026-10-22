@@ -193,6 +193,7 @@ class SampleOutput:
         self._running = False
         self._muted = False
         self._master_level = 1.0
+        self._gain_segments: tuple[tuple[int, int, float, float], ...] = ()
         self._callback_error: str | None = None
 
     @property
@@ -222,6 +223,41 @@ class SampleOutput:
 
     def set_muted(self, muted: bool) -> None:
         self._muted = bool(muted)
+
+    def schedule_gain_ramp(self, start_frame: int, end_frame: int, target_gain: float) -> None:
+        if start_frame < 0 or end_frame <= start_frame:
+            raise ValueError("gain ramp frames must be non-negative and end after start")
+        if not np.isfinite(target_gain) or not 0.0 <= target_gain <= 1.0:
+            raise ValueError("target gain must be between 0.0 and 1.0")
+
+        segments = self._gain_segments
+        start_gain = self._gain_at_frame(start_frame, segments)
+        retained: list[tuple[int, int, float, float]] = []
+        for segment_start, segment_end, segment_from, segment_to in segments:
+            if segment_start >= start_frame:
+                break
+            if segment_end <= start_frame:
+                retained.append((segment_start, segment_end, segment_from, segment_to))
+            else:
+                retained.append((segment_start, start_frame, segment_from, start_gain))
+                break
+        retained.append((start_frame, end_frame, start_gain, float(target_gain)))
+        self._gain_segments = tuple(retained)
+
+    @staticmethod
+    def _gain_at_frame(
+        frame_position: int,
+        segments: tuple[tuple[int, int, float, float], ...],
+    ) -> float:
+        gain = 1.0
+        for start_frame, end_frame, start_gain, end_gain in segments:
+            if frame_position < start_frame:
+                break
+            if frame_position < end_frame:
+                progress = (frame_position - start_frame) / (end_frame - start_frame)
+                return start_gain + (end_gain - start_gain) * progress
+            gain = end_gain
+        return gain
 
     def start(self) -> None:
         devices = list_output_devices(self._device_query)
@@ -275,6 +311,7 @@ class SampleOutput:
     def stop(self) -> None:
         self._running = False
         self._close_stream()
+        self._gain_segments = ()
         self._pending.clear()
         self._active.clear()
         while True:
@@ -318,7 +355,21 @@ class SampleOutput:
                 if sample_start + max(count, 0) < samples.shape[0]:
                     active_future.append((samples, start_frame, velocity))
             self._active = active_future
-            np.clip(outdata * self._master_level, -1.0, 1.0, out=outdata)
+            gain = np.ones(frames, dtype=np.float32)
+            frame_positions = np.arange(block_start, block_end, dtype=np.float64)
+            for start_frame, end_frame, start_gain, end_gain in self._gain_segments:
+                if start_frame >= block_end:
+                    break
+                if end_frame <= block_start:
+                    gain.fill(end_gain)
+                    continue
+                gain[frame_positions >= end_frame] = end_gain
+                ramp_mask = (frame_positions >= start_frame) & (frame_positions < end_frame)
+                if np.any(ramp_mask):
+                    progress = (frame_positions[ramp_mask] - start_frame) / (end_frame - start_frame)
+                    gain[ramp_mask] = start_gain + (end_gain - start_gain) * progress
+
+            np.clip(outdata * (gain[:, np.newaxis] * self._master_level), -1.0, 1.0, out=outdata)
             if self._muted:
                 outdata.fill(0.0)
             self._frame_position = block_end
@@ -351,6 +402,9 @@ class PlaybackCoordinator:
         self.horizon_seconds = horizon_seconds
         self.lead_in_seconds = lead_in_seconds
         self.scheduler: GrooveScheduler | None = None
+        self.inactivity_transition_frames: tuple[int, int, int] | None = None
+        self.resume_ramp_frames: tuple[int, int] | None = None
+        self._musically_inactive = False
 
     def update(self, decision: GrooveDecision) -> int:
         if decision.tempo_bpm is None and self.scheduler is None:
@@ -370,6 +424,27 @@ class PlaybackCoordinator:
 
         self.scheduler.update_decision(decision)
         sample_rate = self.output.sample_bank.sample_rate
+        musical_activity_active = decision.signal_active and decision.musical_activity_active
+        if not musical_activity_active and not self._musically_inactive:
+            transition_start = self.scheduler.next_downbeat_frame(self.output.frame_position)
+            hold_end = transition_start + self.scheduler.bar_frame_count
+            fade_end = hold_end + self.scheduler.bar_frame_count
+            self.inactivity_transition_frames = (transition_start, hold_end, fade_end)
+            self.resume_ramp_frames = None
+            self._musically_inactive = True
+            schedule_gain_ramp = getattr(self.output, "schedule_gain_ramp", None)
+            if schedule_gain_ramp is not None:
+                schedule_gain_ramp(hold_end, fade_end, 0.0)
+        elif musical_activity_active and self._musically_inactive:
+            resume_start = self.scheduler.next_downbeat_frame(self.output.frame_position)
+            beat_frames = round(60.0 / self.scheduler.tempo_bpm * sample_rate)
+            self.resume_ramp_frames = (resume_start, resume_start + beat_frames)
+            self.inactivity_transition_frames = None
+            self._musically_inactive = False
+            schedule_gain_ramp = getattr(self.output, "schedule_gain_ramp", None)
+            if schedule_gain_ramp is not None:
+                schedule_gain_ramp(*self.resume_ramp_frames, 1.0)
+
         horizon_frame = self.output.frame_position + round(self.horizon_seconds * sample_rate)
         queued = 0
         while self.scheduler.next_bar_frame <= horizon_frame:

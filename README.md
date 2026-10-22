@@ -32,8 +32,14 @@ python main.py --list-outputs
 Start live analysis with sampled drum playback. Select an output index from `--list-outputs`; omit `--output-device` to use the default output:
 
 ```bash
-python main.py --live --play-drums --output-device 3 --master-level 0.7
+python main.py --live --play-drums --output-device 3 --master-level 0.7 --onset-timeout-bars 1
 ```
+
+`--onset-timeout-bars` accepts `0`, `1`, `2`, or `4` bars and defaults to `1`. It controls how long the app waits without detected attacks before treating an otherwise active input as musically inactive; zero makes the first onset gap eligible, while longer values preserve sparse playing longer. During a brief pause the last groove continues to the next downbeat, holds for one full bar, then fades over the next bar. If attacks return, playback rejoins on a downbeat without restarting the bar phase and ramps back over one beat.
+
+The tight feel keeps eighth notes straight. Relaxed feel delays offbeat eighth notes for a 55% swing; rock and folk add quiet offbeat ghost snares, while indie does not. Intensity changes accompaniment strength and supplementary accents/hi-hat density; the core kick and backbeat remain while intensity is above zero. Master level independently controls overall output volume.
+
+When a tempo estimate is near half or double the last stable pulse, the app waits for three consistent reliable estimates before changing pulse. Other reliable tempo changes remain responsive. The live view exposes current confidence while holding the prior pulse.
 
 During playback, press `M` to mute/unmute, `+` or `-` to adjust output level, and `Q` or `Ctrl+C` to stop. The bundled CC0 starter kit's asset sources and license details are in `drum_companion/assets/drums/manifest.json`. Only the drums are sent to the selected output; guitar/voice input is not monitored through it.
 
@@ -43,7 +49,7 @@ For same-computer or phone control on a private network, start the local browser
 python main.py --web
 ```
 
-Open the printed localhost URL on the computer and scan the QR code shown there with your phone. The QR opens the page only; enter the PIN displayed on the computer manually on your phone. The panel does not use a cloud service. Keep it on a trusted private network and do not forward its port through your router; plain HTTP does not encrypt traffic on the LAN.
+Open the printed localhost URL on the computer and scan the QR code shown there with your phone. The QR opens the page only; enter the PIN displayed on the computer manually on your phone. The browser's **No-onset timeout** setting accepts `0`, `1`, `2`, or `4` bars and applies immediately to the live session. The panel does not use a cloud service. Keep it on a trusted private network and do not forward its port through your router; plain HTTP does not encrypt traffic on the LAN.
 
 If the phone cannot connect, set the computer's Wi-Fi network profile to **Private** and allow Python through Windows Defender Firewall on private networks. Guest Wi-Fi or router client isolation can also prevent devices from reaching each other. Do not allow access on public networks.
 

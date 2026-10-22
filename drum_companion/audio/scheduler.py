@@ -35,10 +35,24 @@ class GrooveScheduler:
         self.bar_index = 0
         self._next_bar_exact_frame = float(start_frame)
         self._velocity_scale = 1.0
+        self.feel = "tight"
+        self._scheduled_bar_starts: list[int] = []
+
+    @property
+    def bar_frame_count(self) -> int:
+        return round(len(self.pattern) * 30.0 / self.tempo_bpm * self.sample_rate)
 
     @property
     def next_bar_frame(self) -> int:
         return round(self._next_bar_exact_frame)
+
+    def next_downbeat_frame(self, frame_position: int) -> int:
+        self._scheduled_bar_starts = [
+            frame for frame in self._scheduled_bar_starts if frame >= frame_position
+        ]
+        if self._scheduled_bar_starts:
+            return self._scheduled_bar_starts[0]
+        return self.next_bar_frame
 
     def update_tempo(self, tempo_bpm: float) -> None:
         if tempo_bpm <= 0:
@@ -52,16 +66,19 @@ class GrooveScheduler:
 
     def update_decision(self, decision: GrooveDecision) -> None:
         self.update_pattern(decision.pattern)
+        self.feel = decision.feel
         if decision.tempo_bpm is not None:
             self.update_tempo(decision.tempo_bpm)
         self._velocity_scale = max(0.0, min(1.0, decision.effective_intensity))
 
     def schedule_next_bar(self) -> tuple[ScheduledDrumEvent, ...]:
         bar_start = round(self._next_bar_exact_frame)
+        self._scheduled_bar_starts.append(bar_start)
         events = pattern_to_events(
             self.pattern,
             self.tempo_bpm,
             bar_index=self.bar_index,
+            feel=self.feel,
         )
         scheduled = tuple(
             ScheduledDrumEvent(
