@@ -7,10 +7,17 @@ from threading import Event, RLock, Thread
 from typing import Callable, Mapping
 
 from drum_companion.audio.analysis import AudioAnalyzer
-from drum_companion.audio.groove import GrooveFollower, STYLE_PROFILES, generate_accompaniment
+from drum_companion.audio.groove import (
+    GrooveFollower,
+    STYLE_PROFILES,
+    generate_accompaniment,
+    saved_groove_to_pattern,
+)
 from drum_companion.audio.input import CaptureError, MicrophoneCapture
 from drum_companion.audio.output import OutputError, PlaybackCoordinator, SampleOutput
-from drum_companion.groove_library import GrooveLibrary, SavedGroove
+from drum_companion.audio.scheduler import GrooveScheduler
+from drum_companion.groove_library import INSTRUMENTS, GrooveLibrary, SavedGroove
+from drum_companion.models import GrooveDecision
 
 
 class LiveControlError(RuntimeError):
@@ -65,6 +72,14 @@ class LiveAudioController:
         self._stop_event = Event()
         self._capture: MicrophoneCapture | None = None
         self._output: SampleOutput | None = None
+        self._last_detected_tempo_bpm: float | None = None
+        self._preview_state = "stopped"
+        self._preview_error: str | None = None
+        self._preview_tempo_bpm: float | None = None
+        self._preview_draft: SavedGroove | None = None
+        self._preview_thread: Thread | None = None
+        self._preview_stop_event = Event()
+        self._preview_output: SampleOutput | None = None
         self._status = {
             "tempo_bpm": None,
             "tempo_confidence": 0.0,
@@ -81,6 +96,8 @@ class LiveAudioController:
 
     def start(self) -> None:
         with self._lock:
+            if self._preview_thread is not None and self._preview_thread.is_alive():
+                raise LiveControlError("Stop the groove preview before starting the live session")
             if self._thread is not None and self._thread.is_alive():
                 raise LiveControlError("The live session is already active")
             self._stop_event = Event()
@@ -111,6 +128,59 @@ class LiveAudioController:
         if thread.is_alive():
             raise LiveControlError("The live audio worker did not stop in time")
 
+    def start_preview(self, values: Mapping[str, object]) -> dict[str, object]:
+        draft = self._normalize_preview_draft(values)
+        tempo_bpm = self._normalize_preview_tempo(values.get("tempo_bpm"))
+        with self._lock:
+            if self._state in {"starting", "running", "stopping"} or (
+                self._thread is not None and self._thread.is_alive()
+            ):
+                raise LiveControlError(
+                    "Stop the live session before starting the groove preview"
+                )
+            if self._preview_thread is not None and self._preview_thread.is_alive():
+                raise LiveControlError("The groove preview is already active")
+            if tempo_bpm is None:
+                tempo_bpm = self._last_detected_tempo_bpm or 100.0
+            self._preview_draft = draft
+            self._preview_tempo_bpm = tempo_bpm
+            self._preview_error = None
+            self._preview_state = "starting"
+            self._preview_stop_event = Event()
+            self._preview_thread = Thread(
+                target=self._run_preview,
+                name="drum-companion-preview",
+                daemon=True,
+            )
+            self._preview_thread.start()
+        return self.snapshot()
+
+    def update_preview(self, values: Mapping[str, object]) -> dict[str, object]:
+        draft = self._normalize_preview_draft(values)
+        tempo_bpm = self._normalize_preview_tempo(values.get("tempo_bpm"))
+        with self._lock:
+            if self._preview_state not in {"starting", "running"}:
+                raise LiveControlError("The groove preview is not active")
+            self._preview_draft = draft
+            if tempo_bpm is not None:
+                self._preview_tempo_bpm = tempo_bpm
+        return self.snapshot()
+
+    def stop_preview(self, timeout: float = 5.0) -> dict[str, object]:
+        with self._lock:
+            thread = self._preview_thread
+            if thread is None or not thread.is_alive():
+                if self._preview_state != "error":
+                    self._preview_state = "stopped"
+                return self.snapshot()
+            self._preview_state = "stopping"
+            self._preview_stop_event.set()
+
+        thread.join(timeout)
+        if thread.is_alive():
+            raise LiveControlError("The groove preview worker did not stop in time")
+        return self.snapshot()
+
     def update_settings(self, values: Mapping[str, object]) -> dict[str, object]:
         unknown = set(values) - self._setting_fields
         if unknown:
@@ -128,6 +198,7 @@ class LiveAudioController:
             self._validate_settings(candidate)
             self._settings = candidate
             output = self._output
+            preview_output = self._preview_output
             settings = self._settings
 
         if output is not None:
@@ -135,15 +206,41 @@ class LiveAudioController:
                 output.set_master_level(settings.master_level)
             if "muted" in normalized:
                 output.set_muted(settings.muted)
+        if preview_output is not None:
+            if "master_level" in normalized:
+                preview_output.set_master_level(settings.master_level)
+            if "muted" in normalized:
+                preview_output.set_muted(settings.muted)
         return asdict(settings)
 
     def snapshot(self) -> dict[str, object]:
         with self._lock:
+            preview_tempo = self._preview_tempo_bpm
+            if preview_tempo is None:
+                preview_tempo = self._last_detected_tempo_bpm or 100.0
             return {
                 "state": self._state,
                 "running": self._state in {"starting", "running", "stopping"},
                 "error": self._error,
                 "output_error": self._output_error,
+                "last_tempo_bpm": self._last_detected_tempo_bpm,
+                "preview": {
+                    "state": self._preview_state,
+                    "running": self._preview_state in {"starting", "running", "stopping"},
+                    "error": self._preview_error,
+                    "tempo_bpm": preview_tempo,
+                    "draft": (
+                        {
+                            "tracks": {
+                                instrument: list(self._preview_draft.tracks[instrument])
+                                for instrument in INSTRUMENTS
+                            },
+                            "levels": dict(self._preview_draft.levels),
+                        }
+                        if self._preview_draft is not None
+                        else None
+                    ),
+                },
                 "settings": asdict(self._settings),
                 **self._status,
             }
@@ -185,6 +282,109 @@ class LiveAudioController:
             )
         self._groove_library.save_groove(groove)
         return groove.to_dict()
+
+    @staticmethod
+    def _normalize_preview_draft(values: Mapping[str, object]) -> SavedGroove:
+        if set(values) - {"tracks", "levels", "tempo_bpm"} or not {
+            "tracks",
+            "levels",
+        }.issubset(values):
+            raise ValueError("A preview draft must contain tracks and levels")
+        if not isinstance(values["tracks"], Mapping) or not isinstance(
+            values["levels"], Mapping
+        ):
+            raise ValueError("Preview draft tracks and levels must be objects")
+        return SavedGroove.create("Preview", values["tracks"], values["levels"])
+
+    @staticmethod
+    def _normalize_preview_tempo(value: object) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("Preview tempo must be a number between 30 and 300 BPM")
+        tempo_bpm = float(value)
+        if not isfinite(tempo_bpm) or not 30.0 <= tempo_bpm <= 300.0:
+            raise ValueError("Preview tempo must be between 30 and 300 BPM")
+        return tempo_bpm
+
+    def _run_preview(self) -> None:
+        output: SampleOutput | None = None
+        try:
+            settings = self.settings
+            output = self._output_factory(device=settings.output_device)
+            output.set_master_level(settings.master_level)
+            output.set_muted(settings.muted)
+            output.start()
+            if output.sample_bank is None:
+                raise OutputError("Output sample bank is not loaded")
+            with self._lock:
+                self._preview_output = output
+                self._preview_state = "running"
+
+            sample_rate = output.sample_bank.sample_rate
+            lead_in_frames = round(0.1 * sample_rate)
+            draft, tempo_bpm = self._preview_values()
+            pattern = saved_groove_to_pattern(draft)
+            scheduler = GrooveScheduler(
+                pattern,
+                tempo_bpm=tempo_bpm,
+                sample_rate=sample_rate,
+                start_frame=output.frame_position + lead_in_frames,
+                track_levels=draft.levels,
+            )
+
+            while not self._preview_stop_event.is_set():
+                draft, tempo_bpm = self._preview_values()
+                pattern = saved_groove_to_pattern(draft)
+                settings = self.settings
+                decision = GrooveDecision(
+                    tempo_bpm=tempo_bpm,
+                    tempo_confidence=1.0,
+                    effective_intensity=settings.intensity,
+                    pattern=pattern,
+                    holding_stable_tempo=False,
+                    signal_active=True,
+                    feel=settings.feel,
+                )
+                scheduler.update_decision(
+                    decision,
+                    pattern=pattern,
+                    track_levels=draft.levels,
+                )
+                for scheduled in scheduler.schedule_next_bar():
+                    if scheduled.frame_position >= output.frame_position:
+                        output.schedule(scheduled.event, scheduled.frame_position)
+
+                schedule_frame = scheduler.next_bar_frame - lead_in_frames
+                while (
+                    not self._preview_stop_event.is_set()
+                    and output.frame_position < schedule_frame
+                ):
+                    if output.callback_error:
+                        raise OutputError(output.callback_error)
+                    self._preview_stop_event.wait(0.02)
+        except Exception as exc:
+            with self._lock:
+                self._preview_error = str(exc)
+                self._preview_state = "error"
+        finally:
+            if output is not None:
+                try:
+                    output.stop()
+                except Exception as exc:
+                    with self._lock:
+                        self._preview_error = str(exc)
+                        self._preview_state = "error"
+            with self._lock:
+                self._preview_output = None
+                if self._preview_state != "error":
+                    self._preview_state = "stopped"
+
+    def _preview_values(self) -> tuple[SavedGroove, float]:
+        with self._lock:
+            if self._preview_draft is None or self._preview_tempo_bpm is None:
+                raise LiveControlError("The groove preview has no draft or tempo")
+            return self._preview_draft, self._preview_tempo_bpm
 
     def _run(self) -> None:
         capture: MicrophoneCapture | None = None
@@ -254,6 +454,9 @@ class LiveAudioController:
                     continue
 
                 decision = follower.update(observation)
+                with self._lock:
+                    if decision.tempo_bpm is not None:
+                        self._last_detected_tempo_bpm = decision.tempo_bpm
                 if coordinator is not None:
                     selected_groove = (
                         self._groove_library.get_groove(settings.selected_groove_id)

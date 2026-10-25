@@ -47,6 +47,9 @@
     .pairing-details strong { display: block; margin: 5px 0 12px; font-size: 19px; }
     .pairing-details a { overflow-wrap: anywhere; color: #a13b27; }
     .editor-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+    .preview-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 10px; }
+    .preview-tempo { width: 110px; }
+    .preview-status { flex: 1; min-width: 180px; margin: 0; color: #52655d; font-size: 12px; }
     .editor-track { margin-top: 12px; padding: 9px; background: #f1f4f0; border-radius: 4px; }
     .track-heading { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(120px, 2fr) 42px; align-items: center; gap: 8px; }
     .track-name { font-size: 13px; font-weight: 700; }
@@ -162,6 +165,16 @@
           <button id="close-groove-editor" type="button" class="secondary">Close editor</button>
         </div>
         <p class="hint">Tap a step to toggle it. Each instrument level controls its track; Intensity scales all tracks together.</p>
+        <div class="preview-controls">
+          <div class="preview-tempo">
+            <label for="preview-tempo">Preview BPM</label>
+            <input id="preview-tempo" type="number" min="30" max="300" step="0.1" value="100" required>
+          </div>
+          <button id="preview-start" type="button">Preview on host</button>
+          <button id="preview-stop" type="button" class="secondary" disabled>Stop preview</button>
+          <p id="preview-status" class="preview-status" role="status">Preview plays through the host audio output.</p>
+        </div>
+        <p class="hint">Preview loops the unsaved draft through this computer's audio output. Stop the live session before starting a preview; edits take effect on the next bar and are not saved.</p>
         <div id="step-grid-rows"></div>
         <p id="editor-status" class="editor-status" role="status">Create a groove to begin editing.</p>
         <div class="transport">
@@ -192,6 +205,7 @@
     let editorDirty = false;
     let editorTargetValue = "blank";
     let latestStatus = null;
+    let previewUpdateTimer = null;
     const api = async (path, options = {}) => {
       const headers = { ...(options.headers || {}) };
       if (sessionToken && path !== "/api/pair") headers.Authorization = `Bearer ${sessionToken}`;
@@ -335,6 +349,16 @@
       document.querySelector("#energy").textContent = `${Math.round(status.combined_energy * 100)}%`;
       document.querySelector("#pattern").textContent = status.pattern.length ? status.pattern.join("  ") : "Waiting for live analysis";
       if (status.error || status.output_error) showMessage(status.error || status.output_error);
+      const preview = status.preview || { state: "stopped", running: false, tempo_bpm: 100, error: null };
+      const previewTempo = document.querySelector("#preview-tempo");
+      if (document.activeElement !== previewTempo) previewTempo.value = preview.tempo_bpm;
+      document.querySelector("#preview-start").disabled = status.running || preview.running;
+      document.querySelector("#preview-stop").disabled = !preview.running;
+      document.querySelector("#preview-status").textContent = preview.error
+        ? `Preview error: ${preview.error}`
+        : preview.running
+          ? `Preview ${preview.state} at ${Number(preview.tempo_bpm).toFixed(1)} BPM on host output`
+          : "Preview plays through the host audio output.";
       const settings = status.settings;
       const grooveSelect = document.querySelector("#groove-select");
       if (document.activeElement !== grooveSelect) grooveSelect.value = settings.selected_groove_id || "";
@@ -375,6 +399,25 @@
       await api("/api/settings", { method: "PATCH", body: JSON.stringify({ [name]: value }) });
       await refreshStatus();
     });
+    const currentPreviewPayload = () => {
+      if (!editorDraft) throw new Error("Create or select a groove before previewing.");
+      return {
+        tracks: editorDraft.tracks,
+        levels: editorDraft.levels,
+        tempo_bpm: Number(document.querySelector("#preview-tempo").value)
+      };
+    };
+    const queuePreviewUpdate = () => {
+      if (!latestStatus?.preview?.running || !editorDraft) return;
+      clearTimeout(previewUpdateTimer);
+      previewUpdateTimer = setTimeout(() => withMessage(async () => {
+        await api("/api/preview", {
+          method: "PATCH",
+          body: JSON.stringify(currentPreviewPayload())
+        });
+        await refreshStatus();
+      }), 180);
+    };
     const loadEditorTarget = (value) => withMessage(async () => {
       if (editorDirty && !window.confirm("Discard unsaved groove changes?")) {
         document.querySelector("#editor-target").value = editorTargetValue;
@@ -392,6 +435,7 @@
         if (!groove) throw new Error("The selected saved groove is no longer available.");
         setEditorDraft(groove, false);
       }
+      queuePreviewUpdate();
     });
     document.querySelector("#pair").addEventListener("click", async () => {
       showPairMessage("");
@@ -428,26 +472,55 @@
       await api("/api/stop", { method: "POST", body: "{}" });
       await refreshStatus();
     }));
+    document.querySelector("#preview-start").addEventListener("click", () => withMessage(async () => {
+      const payload = currentPreviewPayload();
+      if (!document.querySelector("#preview-tempo").checkValidity()) {
+        throw new Error("Preview tempo must be between 30 and 300 BPM.");
+      }
+      try {
+        await api("/api/preview/start", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+      } catch (error) {
+        document.querySelector("#preview-status").textContent = error.message;
+        throw error;
+      }
+      await refreshStatus();
+    }));
+    document.querySelector("#preview-stop").addEventListener("click", () => withMessage(async () => {
+      await api("/api/preview/stop", { method: "POST", body: "{}" });
+      await refreshStatus();
+    }));
     document.querySelector("#groove-select").addEventListener("change", (event) => {
       updateSetting("selected_groove_id", event.target.value || null);
     });
     document.querySelector("#open-groove-editor").addEventListener("click", () => {
       document.querySelector("#groove-editor-panel").hidden = false;
-      if (!editorDraft) loadEditorTarget(document.querySelector("#editor-target").value);
+      if (!editorDraft && latestStatus?.preview?.running && latestStatus.preview.draft) {
+        setEditorDraft({ ...latestStatus.preview.draft, name: "" }, true);
+      } else if (!editorDraft) {
+        loadEditorTarget(document.querySelector("#editor-target").value);
+      }
       document.querySelector("#editor-target").focus();
     });
-    document.querySelector("#close-groove-editor").addEventListener("click", () => {
+    document.querySelector("#close-groove-editor").addEventListener("click", () => withMessage(async () => {
       if (editorDirty && !window.confirm("Discard unsaved groove changes?")) return;
+      if (latestStatus?.preview?.running) {
+        await api("/api/preview/stop", { method: "POST", body: "{}" });
+        await refreshStatus();
+      }
       document.querySelector("#groove-editor-panel").hidden = true;
       editorDirty = false;
       editorDraft = null;
-    });
+    }));
     document.querySelector("#editor-target").addEventListener("change", (event) => loadEditorTarget(event.target.value));
     document.querySelector("#editor-name").addEventListener("input", (event) => {
       if (!editorDraft) return;
       editorDraft.name = event.target.value;
       editorDirty = true;
       setEditorStatus("Unsaved changes");
+      queuePreviewUpdate();
     });
     document.querySelector("#step-grid-rows").addEventListener("click", (event) => {
       const cell = event.target.closest("button[data-instrument]");
@@ -462,6 +535,7 @@
       );
       editorDirty = true;
       setEditorStatus("Unsaved changes");
+      queuePreviewUpdate();
     });
     document.querySelector("#step-grid-rows").addEventListener("input", (event) => {
       const slider = event.target.closest("input[data-track-level]");
@@ -471,7 +545,9 @@
       slider.nextElementSibling.textContent = editorDraft.levels[instrument].toFixed(2);
       editorDirty = true;
       setEditorStatus("Unsaved changes");
+      queuePreviewUpdate();
     });
+    document.querySelector("#preview-tempo").addEventListener("input", queuePreviewUpdate);
     document.querySelector("#save-groove").addEventListener("click", () => withMessage(async () => {
       if (!editorDraft) throw new Error("Create or select a groove before saving.");
       const payload = {

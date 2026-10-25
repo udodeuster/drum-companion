@@ -16,6 +16,8 @@ from drum_companion.audio.scheduler import GrooveScheduler
 from drum_companion.groove_library import SavedGroove
 from drum_companion.models import GrooveDecision
 
+_STARTER_KIT_GAINS = {"kick": 1.25}
+
 
 class AudioAssetError(RuntimeError):
     """Raised when the bundled starter kit cannot be loaded safely."""
@@ -117,6 +119,7 @@ class SampleBank:
             peak = float(np.max(np.abs(audio)))
             if peak > 0.0:
                 audio = audio * (0.95 / peak)
+            audio *= _STARTER_KIT_GAINS.get(item["instrument"].replace(" ", "_"), 1.0)
             samples[item["instrument"].replace(" ", "_")] = audio
 
         expected = {"kick", "snare", "closed_hi-hat", "open_hi-hat", "cymbal"}
@@ -216,6 +219,10 @@ class SampleOutput:
     @property
     def pending_event_count(self) -> int:
         return self._events.qsize() + len(self._pending)
+
+    @property
+    def callback_error(self) -> str | None:
+        return self._callback_error
 
     def set_master_level(self, level: float) -> None:
         if not 0.0 <= level <= 1.0:

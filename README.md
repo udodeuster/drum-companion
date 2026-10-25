@@ -43,7 +43,7 @@ The tight feel keeps eighth notes straight. Relaxed feel delays offbeat eighth n
 
 When a tempo estimate is near a multiple or fraction of the last stable pulse (about ½, ⅓, ¼, 2×, 3× or 4×, with 15% tolerance), the app holds the prior pulse until consistent reliable estimates support the alternative for at least three seconds. While drums are playing, such half/double-time estimates are ignored entirely, because the microphone can hear the drums' own eighth notes as a double-time pulse. Other reliable tempo changes remain responsive. The live view exposes current confidence while holding the prior pulse.
 
-During playback, press `M` to mute/unmute, `+` or `-` to adjust output level, and `Q` or `Ctrl+C` to stop. The bundled CC0 starter kit's asset sources and license details are in `drum_companion/assets/drums/manifest.json`. Only the drums are sent to the selected output; guitar/voice input is not monitored through it.
+During playback, press `M` to mute/unmute, `+` or `-` to adjust output level, and `Q` or `Ctrl+C` to stop. The bundled CC0 starter kit's asset sources and license details are in `drum_companion/assets/drums/manifest.json`; its kick sample receives a modest 25% base gain boost to balance its perceived level with the other instruments. Only the drums are sent to the selected output; guitar/voice input is not monitored through it.
 
 For same-computer or phone control on a private network, start the local browser panel:
 
@@ -60,6 +60,8 @@ If the phone cannot connect, set the computer's Wi-Fi network profile to **Priva
 In the paired browser panel, choose **Edit grooves** to open the step editor. Start with **New blank groove** or **Copy current Auto groove**; the copy places the existing eighth-note events on every other step of the 16-step grid. Tap a step to toggle that instrument, and use each track's level slider to set its balance. Enter a name and choose **Save groove** to persist the draft; unsaved edits are not applied to the saved version.
 
 Select **Auto** or a named groove from **Playback groove** in the main view. Auto keeps generating the current style-based accompaniment. A saved groove uses its edited tracks while tempo and activity continue to follow the live input. **Intensity** scales all custom-groove hits together, each track level sets that instrument's relative level, and **Master level** controls the overall output. Relaxed feel swings eighth-note offbeats in saved grooves as well as Auto.
+
+Use **Preview on host** in the editor to loop the current draft through the computer's selected drum output without starting microphone capture. The preview BPM starts at the most recently detected live tempo, or 100 BPM if no tempo has been detected, and can be adjusted from 30 to 300 BPM. Step and track-level edits made during preview take effect from the next bar; they do not save the groove. Stop the live session before starting a preview, and stop the preview before starting a live session.
 
 The groove library is stored on the host computer at `%LOCALAPPDATA%\DrumCompanion\grooves.json` on Windows. A paired phone edits the same host-local library; grooves are not synchronized to a cloud service.
 

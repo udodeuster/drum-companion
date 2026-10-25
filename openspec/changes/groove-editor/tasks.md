@@ -20,3 +20,11 @@
 ## 4. Integration Verification
 
 - [x] 4.1 Run the focused groove, output, controller, and web test suites together; verify Auto playback, saved-groove playback, swing, track levels, and save/reload behavior remain consistent end to end.
+
+## 5. Editor Preview
+
+- [x] 5.1 Implement a microphone-independent preview lifecycle using the host audio output and bundled samples; reject preview start during an active live session, report output failures, and verify stop/failure always releases audio resources.
+- [x] 5.2 Add preview-tempo initialization from the most recently detected live tempo or 100 BPM, plus validated manual adjustment from 30 to 300 BPM; verify defaults, retained tempo, and invalid values with controller/API tests.
+- [x] 5.3 Schedule the current unsaved editor draft as a continuous loop and apply pattern/track-level revisions only when scheduling the next bar; verify queued events remain unchanged and preview does not persist draft changes.
+- [x] 5.4 Add editor preview start/stop and BPM controls with clear feedback when live playback blocks preview; verify the paired browser controls use the host output and reflect preview state/errors.
+- [x] 5.5 Document preview behavior, tempo defaults, host-output routing, and the live-session restriction in README.md; run focused preview, controller, and web tests together.

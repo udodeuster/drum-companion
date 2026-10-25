@@ -71,3 +71,39 @@ The system SHALL apply saved-groove changes to future unscheduled bars without m
 #### Scenario: Edit a groove during playback
 - **WHEN** a saved groove is changed and saved during playback
 - **THEN** subsequent unscheduled bars SHALL use the saved changes while already scheduled events retain their timing
+
+### Requirement: Preview an unsaved groove independently
+The system SHALL let users start and stop a looping preview of the current editor draft through the host audio output without requiring microphone capture.
+
+#### Scenario: Start preview without a live session
+- **WHEN** the user starts preview while no live session is active
+- **THEN** the current editor draft SHALL loop through the host audio output
+
+#### Scenario: Stop preview
+- **WHEN** the user stops the editor preview
+- **THEN** preview playback SHALL stop and no further preview events SHALL be scheduled
+
+### Requirement: Set the preview tempo
+The system SHALL provide a manually adjustable preview tempo, initialized to the most recently detected live tempo when available and otherwise to 100 BPM.
+
+#### Scenario: Preview without a previously detected tempo
+- **WHEN** the user opens preview and no live tempo is available
+- **THEN** the preview tempo SHALL default to 100 BPM and remain manually adjustable
+
+#### Scenario: Preview with a previously detected tempo
+- **WHEN** a live tempo is available from the most recent session
+- **THEN** the preview tempo SHALL initialize from that value and remain manually adjustable
+
+### Requirement: Apply draft edits during preview without saving
+The system SHALL use unsaved editor changes for preview and apply changes made during a loop from the next bar without persisting them.
+
+#### Scenario: Edit the draft while previewing
+- **WHEN** the user changes a step or track level while preview is looping
+- **THEN** the current bar SHALL retain its scheduled events and the next bar SHALL use the updated draft without saving it
+
+### Requirement: Prevent preview from overlapping the live session
+The system SHALL prevent editor preview from starting while a live session is active and SHALL explain that the user must stop the live session first.
+
+#### Scenario: Start preview during live playback
+- **WHEN** the user attempts to start preview while the live session is active
+- **THEN** preview SHALL remain stopped and the editor SHALL explain that live playback must be stopped first

@@ -198,11 +198,12 @@ class TestSampleMixer(unittest.TestCase):
         bank = SampleBank.load_starter_kit(asset_directory, sample_rate=48000, channels=1)
 
         self.assertEqual(set(bank.samples), {"kick", "snare", "closed_hat", "open_hat", "cymbal"})
-        for sample in bank.samples.values():
+        for instrument, sample in bank.samples.items():
             self.assertEqual(sample.ndim, 2)
             self.assertEqual(sample.shape[1], 1)
             self.assertGreater(sample.shape[0], 0)
-            self.assertAlmostEqual(float(np.max(np.abs(sample))), 0.95, delta=0.02)
+            expected_peak = 0.95 * 1.25 if instrument == "kick" else 0.95
+            self.assertAlmostEqual(float(np.max(np.abs(sample))), expected_peak, delta=0.02)
 
 
 class TestSampleOutput(unittest.TestCase):

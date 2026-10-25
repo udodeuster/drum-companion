@@ -25,6 +25,9 @@ See proposal.md - Why. The local browser panel is served by the Python host and 
 - **Generalize event timing by grid resolution.** Keep eight Auto cells as eighth notes and schedule sixteen authored cells as sixteenths, with both spanning the same four-beat bar. Copying Auto places its eighth-note events at custom-grid indices 0, 2, 4, through 14. In relaxed feel, delay custom-grid eighth-note offbeats at indices 2, 6, 10, and 14 by the existing 5% of a beat; leave other authored positions unchanged.
 - **Apply gains at the event boundary.** Multiply each event by its instrument's saved track level and the existing shared intensity scale before mixing; preserve master level as the independent final output control. A zero track level silences only that instrument.
 - **Preserve scheduling guarantees.** Selection or saved edits update future unscheduled bars only. Events already queued keep their frame positions, and the current downbeat/bar phase is not reset.
+- **Give editor audition its own microphone-free playback lifecycle.** The controller owns a preview worker that opens the selected host output, loads the same bundled kit, and schedules the current in-memory draft without creating a microphone capture or changing the selected live groove. Preview and live session are mutually exclusive; reject preview start with an actionable message while live is active, and stop/close the preview stream explicitly.
+- **Use an adjustable preview tempo.** Initialize from the most recently available analyzed tempo, including the stopped session's retained status, or 100 BPM when none exists. Validate manual values using the supported 30-300 BPM range. The browser sends the current draft and tempo to the host; the phone remains a remote control and audio still comes from the host output.
+- **Apply draft revisions at bar boundaries.** While looping, the preview worker keeps already scheduled events unchanged and reads the latest in-memory draft and track levels when it schedules each next bar. Editing never writes to the persistent library; explicit groove save remains separate.
 
 ## Risks / Trade-offs
 
@@ -32,6 +35,8 @@ See proposal.md - Why. The local browser panel is served by the Python host and 
 - [A sixteen-cell row can be cramped on a phone] -> Use compact tap targets and a responsive grid with step numbers; keep each instrument and its level visually grouped.
 - [Track level and shared intensity can be mistaken for the same control] -> Label them distinctly and document that track level sets the instrument balance while intensity scales all custom events.
 - [Future scheduling queues events ahead of playback] -> Apply edits at unscheduled bar boundaries and test that queued events retain their original timing.
+- [Preview output initialization or shutdown can fail] -> Surface actionable output errors, keep preview state truthful, and guarantee stream cleanup on stop or worker failure.
+- [A user may expect preview sound on the paired phone] -> Label the control as host-output preview and explain that the phone only controls the host playback.
 
 ## Migration Plan
 

@@ -89,10 +89,14 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if not self._private_client():
+            self._discard_request_body()
+            self.close_connection = True
             self._send_json(403, {"error": "Only private-network clients are allowed"})
             return
         path = urlsplit(self.path).path
         if not self._check_origin():
+            self._discard_request_body()
+            self.close_connection = True
             self._send_json(403, {"error": "Cross-origin request rejected"})
             return
         if path != "/api/pair" and not self._require_session():
@@ -114,6 +118,16 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/grooves":
                 groove = self.server.controller.save_saved_groove(payload)
                 self._send_json(200, {"groove": groove})
+            elif path == "/api/preview/start":
+                self._send_json(
+                    202,
+                    self.server.controller.start_preview(payload),
+                )
+            elif path == "/api/preview/stop":
+                self._send_json(
+                    200,
+                    self.server.controller.stop_preview(),
+                )
             else:
                 self._send_json(404, {"error": "Not found"})
         except GrooveLibraryError as exc:
@@ -125,12 +139,19 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
 
     def do_PATCH(self) -> None:
         if not self._private_client():
+            self._discard_request_body()
+            self.close_connection = True
             self._send_json(403, {"error": "Only private-network clients are allowed"})
             return
-        if urlsplit(self.path).path != "/api/settings":
+        path = urlsplit(self.path).path
+        if path not in {"/api/settings", "/api/preview"}:
+            self._discard_request_body()
+            self.close_connection = True
             self._send_json(404, {"error": "Not found"})
             return
         if not self._check_origin():
+            self._discard_request_body()
+            self.close_connection = True
             self._send_json(403, {"error": "Cross-origin request rejected"})
             return
         if not self._require_session():
@@ -139,8 +160,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         if payload is None:
             return
         try:
-            settings = self.server.controller.update_settings(payload)
-            self._send_json(200, {"settings": settings})
+            if path == "/api/preview":
+                self._send_json(200, self.server.controller.update_preview(payload))
+            else:
+                settings = self.server.controller.update_settings(payload)
+                self._send_json(200, {"settings": settings})
         except DeviceRestartRequired as exc:
             self._send_json(409, {"error": str(exc), "restart_required": True})
         except ValueError as exc:
@@ -173,8 +197,27 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() == "bearer" and token in self.server.sessions:
             return True
+        if self.command in {"POST", "PATCH"}:
+            self._discard_request_body()
+            self.close_connection = True
         self._send_json(401, {"error": "Pair this browser before using controls"})
         return False
+
+    def _discard_request_body(self) -> None:
+        length_text = self.headers.get("Content-Length")
+        if length_text is None:
+            return
+        try:
+            length = int(length_text)
+        except ValueError:
+            self.close_connection = True
+            return
+        if length < 0 or length > 65536:
+            self.close_connection = True
+            return
+        body = self.rfile.read(length)
+        if len(body) != length:
+            self.close_connection = True
 
     def _private_client(self) -> bool:
         try:

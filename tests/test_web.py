@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from drum_companion.audio.input import InputDevice
 from drum_companion.audio.output import OutputDevice
-from drum_companion.control import DeviceRestartRequired, LiveAudioController
+from drum_companion.control import DeviceRestartRequired, LiveAudioController, LiveControlError
 from drum_companion.groove_library import GrooveLibrary, GrooveLibraryError, INSTRUMENTS
 from drum_companion.web import ControlRequestHandler, create_control_server
 
@@ -24,7 +24,9 @@ class StubController:
         )
 
     def snapshot(self):
-        return {"state": self.state, "running": self.state == "running"}
+        snapshot = self.groove_controller.snapshot()
+        snapshot.update({"state": self.state, "running": self.state == "running"})
+        return snapshot
 
     def start(self):
         self.state = "running"
@@ -46,6 +48,15 @@ class StubController:
 
     def automatic_groove_pattern(self):
         return self.groove_controller.automatic_groove_pattern()
+
+    def start_preview(self, values):
+        return self.groove_controller.start_preview(values)
+
+    def update_preview(self, values):
+        return self.groove_controller.update_preview(values)
+
+    def stop_preview(self):
+        return self.groove_controller.stop_preview()
 
 
 class ElementIdParser(HTMLParser):
@@ -124,6 +135,10 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b"step < 16", page)
         self.assertIn(b"Copy current Auto groove", page)
         self.assertIn(b"Discard unsaved groove changes?", page)
+        self.assertIn(b"/api/preview/start", page)
+        self.assertIn(b"/api/preview/stop", page)
+        self.assertIn(b"preview.error", page)
+        self.assertIn(b"30 and 300 BPM", page)
         self.assertNotIn(b'id="phrase"', page)
         self.assertNotIn(b'id="onset-timeout-bars"', page)
         self.assertTrue(
@@ -134,8 +149,11 @@ class TestControlWebServer(unittest.TestCase):
                 "display-pin", "phone-link",
                 "groove-select", "open-groove-editor", "groove-editor-panel",
                 "editor-target", "editor-name", "step-grid-rows", "save-groove", "editor-status",
+                "preview-tempo", "preview-start", "preview-stop", "preview-status",
             }.issubset(parser.ids)
         )
+        self.assertIn(b"Preview loops the unsaved draft", page)
+        self.assertIn(b"Preview on host", page)
 
     def test_host_pairing_details_include_fragment_pin_and_svg_qr(self):
         details_status, _, details_body = self.request("/api/pairing")
@@ -265,6 +283,84 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(unpaired, 401)
         self.assertEqual(status, 200)
         self.assertEqual(len(json.loads(body)["pattern"]), 8)
+
+    def test_preview_api_requires_pairing_origin_and_routes_preview_lifecycle(self):
+        tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+        levels = {instrument: 1.0 for instrument in INSTRUMENTS}
+        payload = {"tracks": tracks, "levels": levels, "tempo_bpm": 120}
+        unpaired, _, _ = self.request(
+            "/api/preview/start", method="POST", payload=payload
+        )
+        cross_origin, _, _ = self.request(
+            "/api/preview",
+            method="PATCH",
+            payload=payload,
+            authenticated=True,
+            origin="http://attacker.example",
+        )
+        with (
+            patch.object(
+                self.controller.groove_controller,
+                "start_preview",
+                return_value={"preview": {"state": "starting"}},
+            ) as start_preview,
+            patch.object(
+                self.controller.groove_controller,
+                "update_preview",
+                return_value={"preview": {"state": "running"}},
+            ) as update_preview,
+            patch.object(
+                self.controller.groove_controller,
+                "stop_preview",
+                return_value={"preview": {"state": "stopped"}},
+            ) as stop_preview,
+        ):
+            started, _, start_body = self.request(
+                "/api/preview/start",
+                method="POST",
+                payload=payload,
+                authenticated=True,
+            )
+            updated, _, update_body = self.request(
+                "/api/preview",
+                method="PATCH",
+                payload=payload,
+                authenticated=True,
+            )
+            stopped, _, stop_body = self.request(
+                "/api/preview/stop",
+                method="POST",
+                payload={},
+                authenticated=True,
+            )
+
+        self.assertEqual(unpaired, 401)
+        self.assertEqual(cross_origin, 403)
+        self.assertEqual(started, 202)
+        self.assertEqual(json.loads(start_body)["preview"]["state"], "starting")
+        self.assertEqual(updated, 200)
+        self.assertEqual(json.loads(update_body)["preview"]["state"], "running")
+        self.assertEqual(stopped, 200)
+        self.assertEqual(json.loads(stop_body)["preview"]["state"], "stopped")
+        start_preview.assert_called_once_with(payload)
+        update_preview.assert_called_once_with(payload)
+        stop_preview.assert_called_once_with()
+
+        with patch.object(
+            self.controller.groove_controller,
+            "start_preview",
+            side_effect=LiveControlError(
+                "Stop the live session before starting the groove preview"
+            ),
+        ):
+            blocked, _, blocked_body = self.request(
+                "/api/preview/start",
+                method="POST",
+                payload=payload,
+                authenticated=True,
+            )
+        self.assertEqual(blocked, 409)
+        self.assertIn("Stop the live session", json.loads(blocked_body)["error"])
 
     def test_groove_api_reports_storage_errors(self):
         with patch.object(
