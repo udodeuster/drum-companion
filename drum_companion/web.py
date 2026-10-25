@@ -8,7 +8,7 @@ import secrets
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Thread
 from urllib.parse import urlsplit
 
 import qrcode
@@ -121,6 +121,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/grooves":
                 groove = self.server.controller.save_saved_groove(payload)
                 self._send_json(200, {"groove": groove})
+            elif path == "/api/shutdown":
+                self._send_json(200, {"shutting_down": True})
+                self.server.controller.stop_preview()
+                self.server.controller.stop()
+                Thread(target=self.server.shutdown, daemon=True).start()
             elif path == "/api/preview/start":
                 self._send_json(
                     202,

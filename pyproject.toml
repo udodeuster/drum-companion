@@ -15,6 +15,9 @@ dependencies = [
     "qrcode>=8,<9",
 ]
 
+[project.optional-dependencies]
+build = ["pyinstaller>=6"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 

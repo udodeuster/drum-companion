@@ -5,6 +5,7 @@ import ipaddress
 import secrets
 import socket
 import sys
+import webbrowser
 from queue import Empty
 
 from drum_companion.audio.analysis import AudioAnalyzer, estimate_performance_context
@@ -55,6 +56,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--live", action="store_true", help="Start live microphone analysis; press Ctrl+C to stop.")
     parser.add_argument("--web", action="store_true", help="Start the local browser control page for this computer and private network.")
     parser.add_argument("--web-port", type=int, default=8765, help="Port for the local browser control page (default: 8765).")
+    parser.add_argument("--open-browser", action="store_true", help="With --web, open the control page in the default browser.")
     parser.add_argument("--play-drums", action="store_true", help="Render the groove to an audio output while using --live.")
     parser.add_argument("--output-device", type=int, help="Output device index shown by --list-outputs.")
     parser.add_argument("--master-level", type=float, default=0.75, help="Drum output level from 0.0 to 1.0.")
@@ -229,13 +231,22 @@ def run_web(args: argparse.Namespace) -> int:
     phone_url = ""
     if phone_address is not None:
         phone_url = f"http://{phone_address}:{args.web_port}/"
-    server = create_control_server(
-        controller,
-        pairing_pin,
-        port=args.web_port,
-        phone_url=phone_url,
-    )
+    try:
+        server = create_control_server(
+            controller,
+            pairing_pin,
+            port=args.web_port,
+            phone_url=phone_url,
+        )
+    except OSError:
+        if not args.open_browser:
+            raise
+        # Another instance already owns the port; just show its page.
+        webbrowser.open(f"http://127.0.0.1:{args.web_port}/")
+        return 0
     port = server.server_address[1]
+    if args.open_browser:
+        webbrowser.open(f"http://127.0.0.1:{port}/")
     print(f"Drum Companion controls: http://127.0.0.1:{port}")
     if phone_address is not None:
         print(f"Phone QR/link: http://{phone_address}:{port}/")

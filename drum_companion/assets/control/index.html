@@ -111,6 +111,7 @@
       <div class="transport">
         <button id="start">Start</button>
         <button id="stop" class="secondary">Stop</button>
+        <button id="quit-app" class="secondary" type="button">Quit app</button>
         <span id="live-indicator" class="live-indicator" data-state="stopped">Stopped</span>
       </div>
       <p id="control-message" class="message" role="status"></p>
@@ -491,6 +492,12 @@
     document.querySelector("#stop").addEventListener("click", () => withMessage(async () => {
       await api("/api/stop", { method: "POST", body: "{}" });
       await refreshStatus();
+    }));
+    document.querySelector("#quit-app").addEventListener("click", () => withMessage(async () => {
+      if (!window.confirm("Quit Drum Companion? The phone control will stop working.")) return;
+      await api("/api/shutdown", { method: "POST", body: "{}" });
+      clearInterval(pollingTimer);
+      document.body.textContent = "Drum Companion has been closed. You can close this tab.";
     }));
     document.querySelector("#preview-start").addEventListener("click", () => withMessage(async () => {
       const payload = currentPreviewPayload();

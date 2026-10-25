@@ -55,6 +55,26 @@ Open the printed localhost URL on the computer to use the controls directly; the
 
 If the phone cannot connect, set the computer's Wi-Fi network profile to **Private** and allow Python through Windows Defender Firewall on private networks. Guest Wi-Fi or router client isolation can also prevent devices from reaching each other. Do not allow access on public networks.
 
+### Standalone Windows executable
+
+Build a single `dist\DrumCompanion.exe` (no Python needed on the target PC) with:
+
+```powershell
+.\build_exe.ps1
+```
+
+Alternatively build a folder variant, which starts faster and is less often flagged by antivirus software than the single-file exe:
+
+```powershell
+.\build_exe.ps1 -Mode folder
+```
+
+This creates `dist\DrumCompanion\DrumCompanion.exe` plus `dist\DrumCompanion-folder.zip`. Send the ZIP; the recipient extracts it completely and starts `DrumCompanion.exe` inside the extracted folder.
+
+Double-click the exe: it starts the control server without a console window and opens the control page in the default browser (the first start takes a few seconds while it unpacks). Use **Quit app** on the page to close it. Logs go to `%LOCALAPPDATA%\DrumCompanion\app.log`; saved grooves stay in `%LOCALAPPDATA%\DrumCompanion\grooves.json`.
+
+Notes for the recipient: the exe is unsigned, so Windows SmartScreen or antivirus software may warn ("More info" → "Run anyway"). For phone control, allow the app through the Windows Firewall on **Private** networks when asked, and allow microphone access in Windows privacy settings.
+
 ### Create and select saved grooves
 
 In the paired browser panel, choose **Edit grooves** to open the step editor. Start with **New blank groove** or **Copy current Auto groove**; the copy places the existing eighth-note events on every other step of the 16-step grid. Tap a step to toggle that instrument, and use each track's level slider to set its balance. Enter a name and choose **Save groove** to persist the draft; unsaved edits are not applied to the saved version. To rename a saved groove, pick it under **Create or edit**, change the name and save. **Delete groove** removes it after confirmation; if it was the selected playback groove, playback falls back to Auto.

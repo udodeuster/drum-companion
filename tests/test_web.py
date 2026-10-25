@@ -312,6 +312,20 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(invalid_status, 400)
         self.assertIn("booleans", json.loads(invalid_body)["error"])
 
+    def test_shutdown_requires_session_and_stops_server(self):
+        unpaired, _, _ = self.request("/api/shutdown", method="POST", payload={})
+        cross_origin, _, _ = self.request(
+            "/api/shutdown", method="POST", payload={}, authenticated=True, origin="http://attacker.example"
+        )
+        status, _, body = self.request("/api/shutdown", method="POST", payload={}, authenticated=True)
+        self.thread.join(timeout=3.0)
+
+        self.assertEqual(unpaired, 401)
+        self.assertEqual(cross_origin, 403)
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)["shutting_down"])
+        self.assertFalse(self.thread.is_alive())
+
     def test_groove_can_be_renamed_and_deleted_with_auth(self):
         tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
         payload = {"name": "Verse", "tracks": tracks, "levels": {i: 1.0 for i in INSTRUMENTS}}
