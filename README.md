@@ -51,7 +51,7 @@ For same-computer or phone control on a private network, start the local browser
 python main.py --web
 ```
 
-Open the printed localhost URL on the computer and scan the QR code shown there with your phone. The QR opens the page only; enter the PIN displayed on the computer manually on your phone. The panel does not use a cloud service. Keep it on a trusted private network and do not forward its port through your router; plain HTTP does not encrypt traffic on the LAN.
+Open the printed localhost URL on the computer to use the controls directly; the host browser does not need a PIN. To control the app from a phone, open the private-network URL shown on the computer (or scan its QR code) and enter the one-time PIN displayed there. Phone pairing remains separate from the host-browser session. The panel does not use a cloud service. Keep it on a trusted private network, allow Python through Windows Defender Firewall only on private networks, and do not forward its port through your router; plain HTTP does not encrypt traffic on the LAN.
 
 If the phone cannot connect, set the computer's Wi-Fi network profile to **Private** and allow Python through Windows Defender Firewall on private networks. Guest Wi-Fi or router client isolation can also prevent devices from reaching each other. Do not allow access on public networks.
 

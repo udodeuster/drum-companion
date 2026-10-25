@@ -99,7 +99,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self.close_connection = True
             self._send_json(403, {"error": "Cross-origin request rejected"})
             return
-        if path != "/api/pair" and not self._require_session():
+        if path not in {"/api/pair", "/api/host-session"} and not self._require_session():
             return
         payload = self._read_json()
         if payload is None:
@@ -107,6 +107,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/pair":
             self._pair(payload)
+            return
+        if path == "/api/host-session":
+            self._host_session()
             return
         try:
             if path == "/api/start":
@@ -189,6 +192,15 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
                 return
             self.server.pairing_used = True
             token = secrets.token_urlsafe(32)
+            self.server.sessions.add(token)
+        self._send_json(200, {"token": token})
+
+    def _host_session(self) -> None:
+        if not self._loopback_client():
+            self._send_json(403, {"error": "PIN-free access is only available on the host computer"})
+            return
+        token = secrets.token_urlsafe(32)
+        with self.server.pairing_lock:
             self.server.sessions.add(token)
         self._send_json(200, {"token": token})
 

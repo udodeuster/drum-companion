@@ -121,6 +121,13 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(api_type, "application/json")
         self.assertEqual(json.loads(body)["state"], "stopped")
+        self.assertIn(b"Welcome to Drum Companion", page)
+        self.assertIn(b"private Wi-Fi", page)
+        self.assertIn(b"no PIN is needed", page)
+        self.assertIn(b"one-time PIN shown on the computer", page)
+        self.assertIn(b'<dialog id="welcome-dialog"', page)
+        self.assertIn(b'document.querySelector("#welcome-dialog").showModal()', page)
+        self.assertIn(b'id="close-welcome"', page)
 
     def test_control_page_contains_unique_ids_for_live_controls(self):
         _, _, page = self.request("/")
@@ -168,6 +175,32 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(qr_status, 200)
         self.assertEqual(qr_type, "image/svg+xml")
         self.assertIn(b"<svg", qr_body)
+
+    def test_host_browser_can_create_a_loopback_session_without_consuming_phone_pairing(self):
+        status, _, session_body = self.request(
+            "/api/host-session",
+            method="POST",
+            payload={},
+        )
+        token = json.loads(session_body)["token"]
+        api_status, _, api_body = self.request("/api/status", token=token)
+        self.assertEqual(status, 200)
+        self.assertTrue(token)
+        self.assertEqual(api_status, 200)
+        self.assertEqual(json.loads(api_body)["state"], "stopped")
+        self.assertFalse(self.server.pairing_used)
+
+    def test_host_session_is_denied_to_non_loopback_clients(self):
+        with patch.object(ControlRequestHandler, "_loopback_client", return_value=False):
+            status, _, body = self.request(
+                "/api/host-session",
+                method="POST",
+                payload={},
+            )
+
+        self.assertEqual(status, 403)
+        self.assertIn("only available on the host computer", json.loads(body)["error"])
+        self.assertEqual(self.server.sessions, {self.token})
 
     def test_pairing_pin_details_are_not_available_to_lan_clients(self):
         from types import SimpleNamespace
