@@ -170,6 +170,27 @@ class TestLiveAudioController(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "UUID"):
                 controller.update_settings({"selected_groove_id": "not-an-id"})
 
+    def test_deleting_selected_groove_falls_back_to_auto(self):
+        with tempfile.TemporaryDirectory() as directory:
+            library = GrooveLibrary(f"{directory}\\grooves.json")
+            tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+            levels = {instrument: 1.0 for instrument in INSTRUMENTS}
+            controller = LiveAudioController(groove_library=library)
+            groove = controller.save_saved_groove({"name": "Verse", "tracks": tracks, "levels": levels})
+            renamed = controller.save_saved_groove({**groove, "name": "Chorus"})
+            controller.update_settings({"selected_groove_id": groove["id"]})
+
+            self.assertEqual(renamed["id"], groove["id"])
+            self.assertEqual([item["name"] for item in controller.list_saved_grooves()], ["Chorus"])
+            result = controller.delete_saved_groove(groove["id"])
+
+            self.assertIsNone(result["settings"]["selected_groove_id"])
+            self.assertEqual(controller.list_saved_grooves(), [])
+            with self.assertRaises(LookupError):
+                controller.delete_saved_groove(groove["id"])
+            with self.assertRaises(ValueError):
+                controller.delete_saved_groove(None)
+
     def test_tempo_range_settings_are_validated_together(self):
         controller = LiveAudioController()
 

@@ -177,6 +177,31 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         except LiveControlError as exc:
             self._send_json(409, {"error": str(exc)})
 
+    def do_DELETE(self) -> None:
+        if not self._private_client():
+            self.close_connection = True
+            self._send_json(403, {"error": "Only private-network clients are allowed"})
+            return
+        path = urlsplit(self.path).path
+        prefix = "/api/grooves/"
+        if not path.startswith(prefix) or "/" in path[len(prefix):] or path == prefix:
+            self._send_json(404, {"error": "Not found"})
+            return
+        if not self._check_origin():
+            self.close_connection = True
+            self._send_json(403, {"error": "Cross-origin request rejected"})
+            return
+        if not self._require_session():
+            return
+        try:
+            self._send_json(200, self.server.controller.delete_saved_groove(path[len(prefix):]))
+        except LookupError as exc:
+            self._send_json(404, {"error": str(exc)})
+        except GrooveLibraryError as exc:
+            self._send_json(500, {"error": str(exc)})
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+
     def _pair(self, payload: dict[str, object]) -> None:
         with self.server.pairing_lock:
             if self.server.pairing_used:

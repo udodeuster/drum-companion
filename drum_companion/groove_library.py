@@ -131,6 +131,15 @@ class GrooveLibrary:
             self._write(tuple(grooves))
             return tuple(grooves)
 
+    def delete_groove(self, groove_id: str) -> tuple[SavedGroove, ...]:
+        with self._lock:
+            grooves = self._read()
+            remaining = tuple(groove for groove in grooves if groove.id != groove_id)
+            if len(remaining) == len(grooves):
+                raise LookupError("The saved groove does not exist")
+            self._write(remaining)
+            return remaining
+
     def _read(self) -> tuple[SavedGroove, ...]:
         if not self.path.exists():
             if self.path.parent.exists() and not self.path.parent.is_dir():

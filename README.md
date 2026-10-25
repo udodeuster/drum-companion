@@ -57,7 +57,7 @@ If the phone cannot connect, set the computer's Wi-Fi network profile to **Priva
 
 ### Create and select saved grooves
 
-In the paired browser panel, choose **Edit grooves** to open the step editor. Start with **New blank groove** or **Copy current Auto groove**; the copy places the existing eighth-note events on every other step of the 16-step grid. Tap a step to toggle that instrument, and use each track's level slider to set its balance. Enter a name and choose **Save groove** to persist the draft; unsaved edits are not applied to the saved version.
+In the paired browser panel, choose **Edit grooves** to open the step editor. Start with **New blank groove** or **Copy current Auto groove**; the copy places the existing eighth-note events on every other step of the 16-step grid. Tap a step to toggle that instrument, and use each track's level slider to set its balance. Enter a name and choose **Save groove** to persist the draft; unsaved edits are not applied to the saved version. To rename a saved groove, pick it under **Create or edit**, change the name and save. **Delete groove** removes it after confirmation; if it was the selected playback groove, playback falls back to Auto.
 
 Select **Auto** or a named groove from **Playback groove** in the main view. Auto keeps generating the current style-based accompaniment. A saved groove uses its edited tracks while tempo and activity continue to follow the live input. **Intensity** scales all custom-groove hits together, each track level sets that instrument's relative level, and **Master level** controls the overall output. Relaxed feel swings eighth-note offbeats in saved grooves as well as Auto.
 

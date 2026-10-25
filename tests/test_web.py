@@ -46,6 +46,9 @@ class StubController:
     def save_saved_groove(self, values):
         return self.groove_controller.save_saved_groove(values)
 
+    def delete_saved_groove(self, groove_id):
+        return self.groove_controller.delete_saved_groove(groove_id)
+
     def automatic_groove_pattern(self):
         return self.groove_controller.automatic_groove_pattern()
 
@@ -155,7 +158,7 @@ class TestControlWebServer(unittest.TestCase):
                                 "intensity", "master-level", "muted", "pairing-qr",
                 "display-pin", "phone-link",
                 "groove-select", "open-groove-editor", "groove-editor-panel",
-                "editor-target", "editor-name", "step-grid-rows", "save-groove", "editor-status",
+                "editor-target", "editor-name", "step-grid-rows", "save-groove", "delete-groove", "editor-status",
                 "preview-tempo", "preview-start", "preview-stop", "preview-status",
             }.issubset(parser.ids)
         )
@@ -308,6 +311,34 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn("already exists", json.loads(duplicate_body)["error"])
         self.assertEqual(invalid_status, 400)
         self.assertIn("booleans", json.loads(invalid_body)["error"])
+
+    def test_groove_can_be_renamed_and_deleted_with_auth(self):
+        tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+        payload = {"name": "Verse", "tracks": tracks, "levels": {i: 1.0 for i in INSTRUMENTS}}
+        _, _, body = self.request("/api/grooves", method="POST", payload=payload, authenticated=True)
+        saved = json.loads(body)["groove"]
+        path = f"/api/grooves/{saved['id']}"
+
+        rename, _, _ = self.request(
+            "/api/grooves", method="POST", payload={**payload, "id": saved["id"], "name": "Chorus"}, authenticated=True
+        )
+        unpaired, _, _ = self.request(path, method="DELETE")
+        cross_origin, _, _ = self.request(
+            path, method="DELETE", authenticated=True, origin="http://attacker.example"
+        )
+        deleted, _, deleted_body = self.request(path, method="DELETE", authenticated=True)
+        missing, _, _ = self.request(path, method="DELETE", authenticated=True)
+        invalid, _, _ = self.request("/api/grooves/not-an-id", method="DELETE", authenticated=True)
+        _, _, listed = self.request("/api/grooves", authenticated=True)
+
+        self.assertEqual(rename, 200)
+        self.assertEqual(unpaired, 401)
+        self.assertEqual(cross_origin, 403)
+        self.assertEqual(deleted, 200)
+        self.assertIsNone(json.loads(deleted_body)["settings"]["selected_groove_id"])
+        self.assertEqual(missing, 404)
+        self.assertEqual(invalid, 404)
+        self.assertEqual(json.loads(listed)["grooves"], [])
 
     def test_auto_groove_copy_endpoint_returns_a_sixteen_step_source_grid(self):
         unpaired, _, _ = self.request("/api/grooves/auto")

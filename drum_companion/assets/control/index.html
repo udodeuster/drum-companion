@@ -192,7 +192,9 @@
         <p id="editor-status" class="editor-status" role="status">Create a groove to begin editing.</p>
         <div class="transport">
           <button id="save-groove" type="button" disabled>Save groove</button>
+          <button id="delete-groove" type="button" class="secondary" disabled>Delete groove</button>
         </div>
+        <p class="hint">To rename a saved groove, choose it under "Create or edit", change the name and save. Deleting asks for confirmation and switches back to Auto if the groove was selected.</p>
       </section>
     </div>
   </main>
@@ -295,6 +297,7 @@
       editorDirty = dirty;
       document.querySelector("#editor-name").value = editorDraft.name;
       document.querySelector("#save-groove").disabled = false;
+      document.querySelector("#delete-groove").disabled = !editorDraft.id;
       setEditorStatus(dirty ? "Unsaved changes" : "Saved groove");
       renderStepGrid();
     };
@@ -582,6 +585,19 @@
       editorTargetValue = saved.id;
       document.querySelector("#editor-target").value = saved.id;
       setEditorStatus("Saved groove");
+    }));
+    document.querySelector("#delete-groove").addEventListener("click", () => withMessage(async () => {
+      if (!editorDraft?.id) throw new Error("Select a saved groove to delete.");
+      const name = savedGrooves.find((item) => item.id === editorDraft.id)?.name || editorDraft.name;
+      if (!window.confirm(`Delete groove "${name}"? This cannot be undone.`)) return;
+      const result = await api(`/api/grooves/${encodeURIComponent(editorDraft.id)}`, { method: "DELETE" });
+      editorTargetValue = "blank";
+      await loadGrooves(result.settings);
+      document.querySelector("#groove-select").value = result.settings.selected_groove_id || "";
+      setEditorDraft(blankGroove(), false);
+      setEditorStatus("Groove deleted");
+      queuePreviewUpdate();
+      await refreshStatus();
     }));
     for (const name of ["style", "feel"]) {
       document.querySelector(`#${name}`).addEventListener("change", (event) => updateSetting(name, event.target.value));

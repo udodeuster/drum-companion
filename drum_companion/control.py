@@ -283,6 +283,18 @@ class LiveAudioController:
         self._groove_library.save_groove(groove)
         return groove.to_dict()
 
+    def delete_saved_groove(self, groove_id: object) -> dict[str, object]:
+        if not isinstance(groove_id, str):
+            raise ValueError("A groove id is required")
+        with self._lock:
+            if self._groove_library.get_groove(groove_id) is None:
+                raise LookupError("The saved groove does not exist")
+            # Fall back to Auto before deleting so a running session never sees a missing groove.
+            if self._settings.selected_groove_id == groove_id:
+                self._settings = replace(self._settings, selected_groove_id=None)
+            self._groove_library.delete_groove(groove_id)
+        return {"settings": asdict(self._settings)}
+
     @staticmethod
     def _normalize_preview_draft(values: Mapping[str, object]) -> SavedGroove:
         if set(values) - {"tracks", "levels", "tempo_bpm"} or not {
