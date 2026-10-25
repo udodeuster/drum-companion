@@ -11,8 +11,9 @@ import numpy as np
 import soundfile as sf
 import sounddevice as sd
 
-from drum_companion.audio.groove import DrumEvent
+from drum_companion.audio.groove import DrumEvent, saved_groove_to_pattern
 from drum_companion.audio.scheduler import GrooveScheduler
+from drum_companion.groove_library import SavedGroove
 from drum_companion.models import GrooveDecision
 
 
@@ -403,23 +404,26 @@ class PlaybackCoordinator:
         self.lead_in_seconds = lead_in_seconds
         self.scheduler: GrooveScheduler | None = None
 
-    def update(self, decision: GrooveDecision) -> int:
+    def update(self, decision: GrooveDecision, groove: SavedGroove | None = None) -> int:
         if decision.tempo_bpm is None and self.scheduler is None:
             return 0
         if self.output.sample_bank is None:
             raise OutputError("Output sample bank is not loaded")
+        pattern = saved_groove_to_pattern(groove) if groove is not None else decision.pattern
+        track_levels = groove.levels if groove is not None else None
         if self.scheduler is None:
             if decision.tempo_bpm is None:
                 return 0
             sample_rate = self.output.sample_bank.sample_rate
             self.scheduler = GrooveScheduler(
-                decision.pattern,
+                pattern,
                 tempo_bpm=decision.tempo_bpm,
                 sample_rate=sample_rate,
                 start_frame=self.output.frame_position + round(self.lead_in_seconds * sample_rate),
+                track_levels=track_levels,
             )
 
-        self.scheduler.update_decision(decision)
+        self.scheduler.update_decision(decision, pattern=pattern, track_levels=track_levels)
         sample_rate = self.output.sample_bank.sample_rate
         horizon_frame = self.output.frame_position + round(self.horizon_seconds * sample_rate)
         queued = 0

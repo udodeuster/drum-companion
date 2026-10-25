@@ -2,7 +2,12 @@ import unittest
 
 import numpy as np
 
-from drum_companion.audio.groove import DrumEvent, generate_accompaniment, pattern_to_events
+from drum_companion.audio.groove import (
+    DrumEvent,
+    generate_accompaniment,
+    pattern_to_events,
+    saved_groove_to_pattern,
+)
 from drum_companion.audio.output import (
     OutputError,
     SampleBank,
@@ -12,6 +17,7 @@ from drum_companion.audio.output import (
     list_output_devices,
 )
 from drum_companion.audio.scheduler import GrooveScheduler
+from drum_companion.groove_library import INSTRUMENTS, SavedGroove
 from drum_companion.models import GrooveDecision
 
 
@@ -78,6 +84,51 @@ class TestGrooveEventMapping(unittest.TestCase):
         self.assertEqual(relaxed[1].offset_seconds, 0.34375)
         self.assertEqual(tight[2].offset_seconds, relaxed[2].offset_seconds)
         self.assertEqual(relaxed[-1].offset_seconds, 2.21875)
+
+    def test_sixteen_step_pattern_fills_one_bar_and_swings_only_eighth_offbeats(self):
+        pattern = tuple("K---" if index in {0, 1, 2, 6, 15} else "----" for index in range(16))
+        tight = pattern_to_events(pattern, tempo_bpm=120.0)
+        relaxed = pattern_to_events(pattern, tempo_bpm=120.0, feel="relaxed")
+
+        self.assertEqual(
+            [event.offset_seconds for event in tight],
+            [0.0, 0.125, 0.25, 0.75, 1.875],
+        )
+        self.assertEqual(
+            [event.offset_seconds for event in relaxed],
+            [0.0, 0.125, 0.275, 0.775, 1.875],
+        )
+
+    def test_saved_groove_events_use_all_tracks_and_sixteenth_timing(self):
+        tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+        tracks["kick"][0] = True
+        tracks["snare"][1] = True
+        tracks["closed_hat"][2] = True
+        tracks["open_hat"][6] = True
+        tracks["cymbal"][15] = True
+        groove = SavedGroove.create(
+            "Test",
+            tracks,
+            {instrument: 1.0 for instrument in INSTRUMENTS},
+        )
+
+        pattern = saved_groove_to_pattern(groove)
+        tight = pattern_to_events(pattern, tempo_bpm=120.0)
+        relaxed = pattern_to_events(pattern, tempo_bpm=120.0, feel="relaxed")
+
+        self.assertEqual(
+            [(event.instrument, event.offset_seconds) for event in tight],
+            [
+                ("kick", 0.0),
+                ("snare", 0.125),
+                ("closed_hat", 0.25),
+                ("open_hat", 0.75),
+                ("cymbal", 1.875),
+            ],
+        )
+        self.assertEqual(relaxed[2].offset_seconds, 0.275)
+        self.assertEqual(relaxed[3].offset_seconds, 0.775)
+        self.assertEqual(relaxed[-1].offset_seconds, 1.875)
 
     def test_maps_ghost_marker_to_quiet_snare_event(self):
         events = pattern_to_events(("g---",), tempo_bpm=120.0, bar_index=1)
@@ -274,6 +325,65 @@ class TestSampleOutput(unittest.TestCase):
 
 
 class TestGrooveScheduler(unittest.TestCase):
+    def test_track_levels_and_intensity_scale_each_event_before_master_output(self):
+        pattern = tuple("K---" if index == 0 else "S---" if index == 1 else "----" for index in range(16))
+        levels = {instrument: 1.0 for instrument in INSTRUMENTS}
+        levels.update({"kick": 0.25, "snare": 0.5, "closed_hat": 0.0})
+        scheduler = GrooveScheduler(
+            pattern,
+            tempo_bpm=120.0,
+            sample_rate=1000,
+            track_levels=levels,
+        )
+        scheduler.update_decision(
+            GrooveDecision(120.0, 0.9, 0.8, pattern, False, True),
+            track_levels=levels,
+        )
+
+        scheduled = scheduler.schedule_next_bar()
+        hits = [item.event for item in scheduled]
+
+        self.assertAlmostEqual(hits[0].velocity, 0.78 * 0.25 * 0.8)
+        self.assertAlmostEqual(hits[1].velocity, 0.72 * 0.5 * 0.8)
+
+        bank = SampleBank(
+            {"kick": np.full((2, 1), 0.8, dtype=np.float32)},
+            sample_rate=1000,
+            channels=1,
+        )
+        rendered = SampleMixer(bank).render_events(
+            (hits[0],),
+            frame_count=2,
+            master_level=0.5,
+        )
+        self.assertAlmostEqual(float(rendered[0, 0]), hits[0].velocity * 0.8 * 0.5)
+
+    def test_zero_track_level_silences_only_that_instrument(self):
+        pattern = ("K---", "S---") + ("----",) * 14
+        levels = {instrument: 1.0 for instrument in INSTRUMENTS}
+        levels["kick"] = 0.0
+        scheduler = GrooveScheduler(
+            pattern,
+            tempo_bpm=120.0,
+            sample_rate=1000,
+            track_levels=levels,
+        )
+
+        hits = [item.event for item in scheduler.schedule_next_bar()]
+
+        self.assertEqual([(hit.instrument, hit.velocity) for hit in hits], [("kick", 0.0), ("snare", 0.72)])
+
+    def test_sixteen_step_groove_is_scheduled_as_one_four_beat_bar(self):
+        scheduler = GrooveScheduler(("K---",) * 16, tempo_bpm=120.0, sample_rate=1000)
+
+        self.assertEqual(scheduler.bar_frame_count, 2000)
+        first_bar = scheduler.schedule_next_bar()
+        second_bar = scheduler.schedule_next_bar()
+
+        self.assertEqual(first_bar[0].frame_position, 0)
+        self.assertEqual(second_bar[0].frame_position, 2000)
+        self.assertEqual(first_bar[-1].frame_position, 1875)
+
     def test_relaxed_decision_reaches_future_scheduled_bars(self):
         pattern = ("--H-",) * 8
         scheduler = GrooveScheduler(pattern, tempo_bpm=96.0, sample_rate=1000)
@@ -345,6 +455,65 @@ class TestGrooveScheduler(unittest.TestCase):
 
 
 class TestPlaybackCoordinator(unittest.TestCase):
+    def test_saved_groove_updates_only_future_bars_and_auto_remains_available(self):
+        class FakeOutput:
+            sample_bank = SampleBank(
+                {instrument: np.ones((4, 1), dtype=np.float32) for instrument in INSTRUMENTS},
+                sample_rate=1000,
+                channels=1,
+            )
+
+            def __init__(self):
+                self.frame_position = 0
+                self.scheduled = []
+
+            def schedule(self, event, frame_position):
+                self.scheduled.append((frame_position, event))
+
+        def make_saved_groove(name, active_steps):
+            tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+            for step, instrument in active_steps:
+                tracks[instrument][step] = True
+            return SavedGroove.create(
+                name,
+                tracks,
+                {instrument: 0.5 for instrument in INSTRUMENTS},
+            )
+
+        output = FakeOutput()
+        coordinator = PlaybackCoordinator(output, horizon_seconds=1.0, lead_in_seconds=0.0)
+        auto_pattern = ("----",) * 8
+        decision = GrooveDecision(120.0, 0.9, 0.8, auto_pattern, False, True)
+        original = make_saved_groove("Original", [(0, "kick")])
+
+        coordinator.update(decision, original)
+        original_events = tuple(output.scheduled)
+        kick = next(event for _, event in original_events)
+        self.assertEqual(kick.instrument, "kick")
+        self.assertAlmostEqual(kick.velocity, 0.78 * 0.5 * 0.8)
+
+        output.frame_position = 1000
+        edited = make_saved_groove("Edited", [(2, "snare")])
+        coordinator.update(decision, edited)
+
+        self.assertEqual(tuple(output.scheduled[: len(original_events)]), original_events)
+        future_hits = [
+            (frame, event)
+            for frame, event in output.scheduled[len(original_events) :]
+            if event.velocity > 0.0
+        ]
+        self.assertEqual([(frame, event.instrument) for frame, event in future_hits], [(2250, "snare")])
+
+        output.frame_position = 2000
+        coordinator.update(decision)
+        auto_hits = [
+            (frame, event.instrument)
+            for frame, event in output.scheduled[len(original_events) + len(future_hits) :]
+            if event.velocity > 0.0
+        ]
+        self.assertEqual(auto_hits, [])
+        self.assertEqual(coordinator.scheduler.pattern, auto_pattern)
+
     def test_inactive_input_keeps_groove_scheduling_until_manual_stop(self):
         class FakeOutput:
             sample_bank = SampleBank(

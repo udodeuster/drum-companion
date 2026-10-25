@@ -55,6 +55,14 @@ Open the printed localhost URL on the computer and scan the QR code shown there 
 
 If the phone cannot connect, set the computer's Wi-Fi network profile to **Private** and allow Python through Windows Defender Firewall on private networks. Guest Wi-Fi or router client isolation can also prevent devices from reaching each other. Do not allow access on public networks.
 
+### Create and select saved grooves
+
+In the paired browser panel, choose **Edit grooves** to open the step editor. Start with **New blank groove** or **Copy current Auto groove**; the copy places the existing eighth-note events on every other step of the 16-step grid. Tap a step to toggle that instrument, and use each track's level slider to set its balance. Enter a name and choose **Save groove** to persist the draft; unsaved edits are not applied to the saved version.
+
+Select **Auto** or a named groove from **Playback groove** in the main view. Auto keeps generating the current style-based accompaniment. A saved groove uses its edited tracks while tempo and activity continue to follow the live input. **Intensity** scales all custom-groove hits together, each track level sets that instrument's relative level, and **Master level** controls the overall output. Relaxed feel swings eighth-note offbeats in saved grooves as well as Auto.
+
+The groove library is stored on the host computer at `%LOCALAPPDATA%\DrumCompanion\grooves.json` on Windows. A paired phone edits the same host-local library; grooves are not synchronized to a cloud service.
+
 For a Windows playback smoke test, choose an index from `--list-outputs` and run `python main.py --live --play-drums --output-device <index> --master-level 0.15` while playing a steady guitar pulse. Confirm the drum pattern becomes audible, test `M` and `+`/`-`, then stop with `Q`. If the output device cannot open, an actionable warning is printed and microphone analysis continues without drums.
 
 Start capture with the default input, or select an index from the device list. Stop with `Ctrl+C`:

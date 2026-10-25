@@ -46,6 +46,15 @@
     .pairing-details img { width: 156px; height: 156px; padding: 8px; background: #fff; border: 1px solid #d4ddd6; }
     .pairing-details strong { display: block; margin: 5px 0 12px; font-size: 19px; }
     .pairing-details a { overflow-wrap: anywhere; color: #a13b27; }
+    .editor-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+    .editor-track { margin-top: 12px; padding: 9px; background: #f1f4f0; border-radius: 4px; }
+    .track-heading { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(120px, 2fr) 42px; align-items: center; gap: 8px; }
+    .track-name { font-size: 13px; font-weight: 700; }
+    .step-grid-scroll { overflow-x: auto; padding: 5px 0 2px; }
+    .step-grid { display: grid; grid-template-columns: repeat(16, minmax(34px, 1fr)); gap: 4px; min-width: 604px; }
+    button.step-cell { min-height: 40px; padding: 0; border: 1px solid #aab8af; background: #fff; color: #19302d; font-size: 12px; }
+    button.step-cell[aria-pressed="true"] { border-color: #a33c28; background: #d65a3c; color: #fff; }
+    .editor-status { min-height: 1.2em; margin: 8px 0 0; color: #52655d; font-size: 12px; }
     [hidden] { display: none !important; }
     @media (max-width: 600px) {
       main { padding: 8px 8px 20px; }
@@ -53,6 +62,8 @@
       section { padding: 10px 12px; }
       .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .editor-toolbar { grid-template-columns: 1fr 1fr; }
+      .editor-toolbar button { grid-column: 1 / -1; }
       .transport button { flex: 1; }
       .pairing-details { grid-template-columns: 120px minmax(0, 1fr); gap: 12px; }
       .pairing-details img { width: 120px; height: 120px; }
@@ -109,6 +120,8 @@
       <section aria-labelledby="groove-heading">
         <h2 id="groove-heading">Groove</h2>
         <div class="settings-grid">
+          <div><label for="groove-select">Playback groove</label><select id="groove-select"><option value="">Auto</option></select></div>
+          <div class="toggle"><button id="open-groove-editor" type="button" class="secondary">Edit grooves</button></div>
           <div><label for="style">Style</label><select id="style"><option>rock</option><option>folk</option><option>indie</option></select></div>
           <div><label for="feel">Feel</label><select id="feel"><option>tight</option><option>relaxed</option></select></div>
           <div>
@@ -132,6 +145,29 @@
         <p class="hint">Tight keeps eighths straight; relaxed uses 55% swing with quiet rock/folk ghost snares. Intensity shapes strength and extra accents; core kick and backbeat remain above zero. Changes affect future bars only.</p>
         <p class="hint">Tempo holds through half/double-time ambiguity until three reliable estimates agree. Once started, the groove and tempo keep playing until you stop.</p>
       </section>
+      <section id="groove-editor-panel" aria-labelledby="groove-editor-heading" hidden>
+        <h2 id="groove-editor-heading">Groove editor</h2>
+        <div class="editor-toolbar">
+          <div>
+            <label for="editor-target">Create or edit</label>
+            <select id="editor-target">
+              <option value="blank">New blank groove</option>
+              <option value="copy-auto">Copy current Auto groove</option>
+            </select>
+          </div>
+          <div>
+            <label for="editor-name">Groove name</label>
+            <input id="editor-name" type="text" maxlength="64" autocomplete="off">
+          </div>
+          <button id="close-groove-editor" type="button" class="secondary">Close editor</button>
+        </div>
+        <p class="hint">Tap a step to toggle it. Each instrument level controls its track; Intensity scales all tracks together.</p>
+        <div id="step-grid-rows"></div>
+        <p id="editor-status" class="editor-status" role="status">Create a groove to begin editing.</p>
+        <div class="transport">
+          <button id="save-groove" type="button" disabled>Save groove</button>
+        </div>
+      </section>
     </div>
   </main>
   <script>
@@ -143,6 +179,19 @@
     let sessionToken = sessionStorage.getItem(tokenKey);
     let polling = false;
     let pollingTimer = null;
+    const instruments = ["kick", "snare", "closed_hat", "open_hat", "cymbal"];
+    const instrumentNames = {
+      kick: "Kick",
+      snare: "Snare",
+      closed_hat: "Closed hat",
+      open_hat: "Open hat",
+      cymbal: "Cymbal"
+    };
+    let savedGrooves = [];
+    let editorDraft = null;
+    let editorDirty = false;
+    let editorTargetValue = "blank";
+    let latestStatus = null;
     const api = async (path, options = {}) => {
       const headers = { ...(options.headers || {}) };
       if (sessionToken && path !== "/api/pair") headers.Authorization = `Bearer ${sessionToken}`;
@@ -151,6 +200,7 @@
       const body = await response.json();
       if (!response.ok) {
         const error = new Error(body.error || "Control request failed.");
+        error.status = response.status;
         error.restartRequired = body.restart_required === true;
         throw error;
       }
@@ -175,7 +225,105 @@
       setOptions(document.querySelector("#input-device"), devices.inputs, settings.input_device);
       setOptions(document.querySelector("#output-device"), devices.outputs, settings.output_device);
     };
+    const setGrooveOptions = (settings) => {
+      const select = document.querySelector("#groove-select");
+      select.replaceChildren(new Option("Auto", ""));
+      savedGrooves.forEach((groove) => select.add(new Option(groove.name, groove.id)));
+      if (document.activeElement !== select) select.value = settings.selected_groove_id || "";
+
+      const target = document.querySelector("#editor-target");
+      const previousTarget = target.value || editorTargetValue;
+      target.replaceChildren(
+        new Option("New blank groove", "blank"),
+        new Option("Copy current Auto groove", "copy-auto")
+      );
+      savedGrooves.forEach((groove) => target.add(new Option(`Edit: ${groove.name}`, groove.id)));
+      target.value = savedGrooves.some((groove) => groove.id === previousTarget) ? previousTarget : "blank";
+      if (target.value !== previousTarget) editorTargetValue = target.value;
+    };
+    const loadGrooves = async (settings = latestStatus?.settings || {}) => {
+      savedGrooves = (await api("/api/grooves")).grooves;
+      setGrooveOptions(settings);
+    };
+    const blankGroove = () => ({
+      id: null,
+      name: "",
+      tracks: Object.fromEntries(instruments.map((instrument) => [instrument, Array(16).fill(false)])),
+      levels: Object.fromEntries(instruments.map((instrument) => [instrument, 1]))
+    });
+    const setEditorStatus = (text) => {
+      document.querySelector("#editor-status").textContent = text;
+    };
+    const setEditorDraft = (groove, dirty) => {
+      editorDraft = {
+        id: groove.id || null,
+        name: groove.name || "",
+        tracks: Object.fromEntries(instruments.map((instrument) => [instrument, [...groove.tracks[instrument]]])),
+        levels: Object.fromEntries(instruments.map((instrument) => [instrument, Number(groove.levels[instrument])]))
+      };
+      editorDirty = dirty;
+      document.querySelector("#editor-name").value = editorDraft.name;
+      document.querySelector("#save-groove").disabled = false;
+      setEditorStatus(dirty ? "Unsaved changes" : "Saved groove");
+      renderStepGrid();
+    };
+    const renderStepGrid = () => {
+      const rows = document.querySelector("#step-grid-rows");
+      rows.replaceChildren();
+      if (!editorDraft) return;
+      for (const instrument of instruments) {
+        const row = document.createElement("div");
+        row.className = "editor-track";
+        const heading = document.createElement("div");
+        heading.className = "track-heading";
+        const name = document.createElement("span");
+        name.className = "track-name";
+        name.textContent = instrumentNames[instrument];
+        const level = document.createElement("input");
+        level.type = "range";
+        level.min = "0";
+        level.max = "1";
+        level.step = "0.01";
+        level.value = editorDraft.levels[instrument];
+        level.dataset.trackLevel = instrument;
+        level.setAttribute("aria-label", `${instrumentNames[instrument]} track level`);
+        const levelValue = document.createElement("output");
+        levelValue.textContent = Number(level.value).toFixed(2);
+        heading.append(name, level, levelValue);
+        const scroll = document.createElement("div");
+        scroll.className = "step-grid-scroll";
+        const grid = document.createElement("div");
+        grid.className = "step-grid";
+        for (let step = 0; step < 16; step += 1) {
+          const active = editorDraft.tracks[instrument][step];
+          const cell = document.createElement("button");
+          cell.type = "button";
+          cell.className = "step-cell";
+          cell.textContent = String(step + 1);
+          cell.dataset.instrument = instrument;
+          cell.dataset.step = String(step);
+          cell.setAttribute("aria-pressed", String(active));
+          cell.setAttribute("aria-label", `${instrumentNames[instrument]} step ${step + 1} ${active ? "on" : "off"}`);
+          grid.append(cell);
+        }
+        scroll.append(grid);
+        row.append(heading, scroll);
+        rows.append(row);
+      }
+    };
+    const autoPatternToDraft = (pattern) => {
+      const draft = blankGroove();
+      for (const [step, cell] of pattern.entries()) {
+        const tokens = new Set(cell);
+        const targetStep = step * 2;
+        if (tokens.has("K")) draft.tracks.kick[targetStep] = true;
+        if (tokens.has("S") || tokens.has("g")) draft.tracks.snare[targetStep] = true;
+        if (tokens.has("H")) draft.tracks.closed_hat[targetStep] = true;
+      }
+      return draft;
+    };
     const paintStatus = (status) => {
+      latestStatus = status;
       const indicator = document.querySelector("#live-indicator");
       indicator.dataset.state = status.state;
       indicator.textContent = status.state[0].toUpperCase() + status.state.slice(1);
@@ -188,6 +336,8 @@
       document.querySelector("#pattern").textContent = status.pattern.length ? status.pattern.join("  ") : "Waiting for live analysis";
       if (status.error || status.output_error) showMessage(status.error || status.output_error);
       const settings = status.settings;
+      const grooveSelect = document.querySelector("#groove-select");
+      if (document.activeElement !== grooveSelect) grooveSelect.value = settings.selected_groove_id || "";
       for (const name of ["style", "feel"]) document.querySelector(`#${name}`).value = settings[name];
       for (const name of ["muted", "drums-enabled"]) {
         const key = name === "drums-enabled" ? "drums_enabled" : name;
@@ -210,16 +360,38 @@
       polling = true;
       try { paintStatus(await api("/api/status")); }
       catch (error) {
-        sessionStorage.removeItem(tokenKey);
-        sessionToken = null;
-        pairPanel.hidden = false;
-        sessionPanel.hidden = true;
-        showPairMessage(error.message);
+        if (error.status === 401) {
+          sessionStorage.removeItem(tokenKey);
+          sessionToken = null;
+          pairPanel.hidden = false;
+          sessionPanel.hidden = true;
+          showPairMessage(error.message);
+        } else {
+          showMessage(error.message);
+        }
       } finally { polling = false; }
     };
     const updateSetting = (name, value) => withMessage(async () => {
       await api("/api/settings", { method: "PATCH", body: JSON.stringify({ [name]: value }) });
       await refreshStatus();
+    });
+    const loadEditorTarget = (value) => withMessage(async () => {
+      if (editorDirty && !window.confirm("Discard unsaved groove changes?")) {
+        document.querySelector("#editor-target").value = editorTargetValue;
+        return;
+      }
+      editorTargetValue = value;
+      if (value === "blank") {
+        setEditorDraft(blankGroove(), true);
+      } else if (value === "copy-auto") {
+        const currentPattern = latestStatus?.pattern || [];
+        const pattern = currentPattern.length ? currentPattern : (await api("/api/grooves/auto")).pattern;
+        setEditorDraft(autoPatternToDraft(pattern), true);
+      } else {
+        const groove = savedGrooves.find((item) => item.id === value);
+        if (!groove) throw new Error("The selected saved groove is no longer available.");
+        setEditorDraft(groove, false);
+      }
     });
     document.querySelector("#pair").addEventListener("click", async () => {
       showPairMessage("");
@@ -232,10 +404,21 @@
         sessionStorage.setItem(tokenKey, sessionToken);
         pairPanel.hidden = true;
         sessionPanel.hidden = false;
-        await loadDevices((await api("/api/status")).settings);
+        const status = await api("/api/status");
+        await loadDevices(status.settings);
+        latestStatus = status;
+        await loadGrooves(status.settings);
         await refreshStatus();
         beginPolling();
-      } catch (error) { showPairMessage(error.message); }
+      } catch (error) {
+        if (sessionToken) {
+          pairPanel.hidden = true;
+          sessionPanel.hidden = false;
+          showMessage(error.message);
+        } else {
+          showPairMessage(error.message);
+        }
+      }
     });
     document.querySelector("#start").addEventListener("click", () => withMessage(async () => {
       await api("/api/start", { method: "POST", body: "{}" });
@@ -244,6 +427,68 @@
     document.querySelector("#stop").addEventListener("click", () => withMessage(async () => {
       await api("/api/stop", { method: "POST", body: "{}" });
       await refreshStatus();
+    }));
+    document.querySelector("#groove-select").addEventListener("change", (event) => {
+      updateSetting("selected_groove_id", event.target.value || null);
+    });
+    document.querySelector("#open-groove-editor").addEventListener("click", () => {
+      document.querySelector("#groove-editor-panel").hidden = false;
+      if (!editorDraft) loadEditorTarget(document.querySelector("#editor-target").value);
+      document.querySelector("#editor-target").focus();
+    });
+    document.querySelector("#close-groove-editor").addEventListener("click", () => {
+      if (editorDirty && !window.confirm("Discard unsaved groove changes?")) return;
+      document.querySelector("#groove-editor-panel").hidden = true;
+      editorDirty = false;
+      editorDraft = null;
+    });
+    document.querySelector("#editor-target").addEventListener("change", (event) => loadEditorTarget(event.target.value));
+    document.querySelector("#editor-name").addEventListener("input", (event) => {
+      if (!editorDraft) return;
+      editorDraft.name = event.target.value;
+      editorDirty = true;
+      setEditorStatus("Unsaved changes");
+    });
+    document.querySelector("#step-grid-rows").addEventListener("click", (event) => {
+      const cell = event.target.closest("button[data-instrument]");
+      if (!cell || !editorDraft) return;
+      const instrument = cell.dataset.instrument;
+      const step = Number(cell.dataset.step);
+      editorDraft.tracks[instrument][step] = !editorDraft.tracks[instrument][step];
+      cell.setAttribute("aria-pressed", String(editorDraft.tracks[instrument][step]));
+      cell.setAttribute(
+        "aria-label",
+        `${instrumentNames[instrument]} step ${step + 1} ${editorDraft.tracks[instrument][step] ? "on" : "off"}`
+      );
+      editorDirty = true;
+      setEditorStatus("Unsaved changes");
+    });
+    document.querySelector("#step-grid-rows").addEventListener("input", (event) => {
+      const slider = event.target.closest("input[data-track-level]");
+      if (!slider || !editorDraft) return;
+      const instrument = slider.dataset.trackLevel;
+      editorDraft.levels[instrument] = Number(slider.value);
+      slider.nextElementSibling.textContent = editorDraft.levels[instrument].toFixed(2);
+      editorDirty = true;
+      setEditorStatus("Unsaved changes");
+    });
+    document.querySelector("#save-groove").addEventListener("click", () => withMessage(async () => {
+      if (!editorDraft) throw new Error("Create or select a groove before saving.");
+      const payload = {
+        name: editorDraft.name,
+        tracks: editorDraft.tracks,
+        levels: editorDraft.levels
+      };
+      if (editorDraft.id) payload.id = editorDraft.id;
+      const saved = (await api("/api/grooves", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      })).groove;
+      await loadGrooves();
+      setEditorDraft(saved, false);
+      editorTargetValue = saved.id;
+      document.querySelector("#editor-target").value = saved.id;
+      setEditorStatus("Saved groove");
     }));
     for (const name of ["style", "feel"]) {
       document.querySelector(`#${name}`).addEventListener("change", (event) => updateSetting(name, event.target.value));
@@ -290,12 +535,22 @@
         pairPanel.hidden = true;
         sessionPanel.hidden = false;
         await loadDevices(status.settings);
+        latestStatus = status;
+        await loadGrooves(status.settings);
         paintStatus(status);
         beginPolling();
       } catch (error) {
-        sessionStorage.removeItem(tokenKey);
-        sessionToken = null;
-        showPairMessage("Pairing expired. Enter the current PIN.");
+        if (error.status === 401) {
+          sessionStorage.removeItem(tokenKey);
+          sessionToken = null;
+          pairPanel.hidden = false;
+          sessionPanel.hidden = true;
+          showPairMessage("Pairing expired. Enter the current PIN.");
+        } else {
+          pairPanel.hidden = true;
+          sessionPanel.hidden = false;
+          showMessage(error.message);
+        }
       }
     };
     const loadPairingDetails = async () => {

@@ -1,20 +1,27 @@
 import json
 import threading
+import tempfile
 import unittest
 from html.parser import HTMLParser
+from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from unittest.mock import patch
 
 from drum_companion.audio.input import InputDevice
 from drum_companion.audio.output import OutputDevice
-from drum_companion.control import DeviceRestartRequired
+from drum_companion.control import DeviceRestartRequired, LiveAudioController
+from drum_companion.groove_library import GrooveLibrary, GrooveLibraryError, INSTRUMENTS
 from drum_companion.web import ControlRequestHandler, create_control_server
 
 
 class StubController:
-    def __init__(self):
+    def __init__(self, storage_directory):
         self.state = "stopped"
         self.settings = {}
+        self.groove_controller = LiveAudioController(
+            groove_library=GrooveLibrary(Path(storage_directory) / "grooves.json")
+        )
 
     def snapshot(self):
         return {"state": self.state, "running": self.state == "running"}
@@ -31,6 +38,15 @@ class StubController:
         self.settings.update(values)
         return dict(self.settings)
 
+    def list_saved_grooves(self):
+        return self.groove_controller.list_saved_grooves()
+
+    def save_saved_groove(self, values):
+        return self.groove_controller.save_saved_groove(values)
+
+    def automatic_groove_pattern(self):
+        return self.groove_controller.automatic_groove_pattern()
+
 
 class ElementIdParser(HTMLParser):
     def __init__(self):
@@ -43,7 +59,8 @@ class ElementIdParser(HTMLParser):
 
 class TestControlWebServer(unittest.TestCase):
     def setUp(self):
-        self.controller = StubController()
+        self.storage = tempfile.TemporaryDirectory()
+        self.controller = StubController(self.storage.name)
         self.server = create_control_server(
             self.controller,
             "123456",
@@ -61,6 +78,7 @@ class TestControlWebServer(unittest.TestCase):
         self.server.shutdown()
         self.thread.join(timeout=1.0)
         self.server.server_close()
+        self.storage.cleanup()
 
     def request(self, path, *, method="GET", payload=None, authenticated=False, token=None, origin=None):
         headers = {}
@@ -102,6 +120,10 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b"55% swing", page)
         self.assertIn(b"core kick and backbeat remain above zero", page)
         self.assertIn(b"three reliable estimates agree", page)
+        self.assertIn(b"repeat(16, minmax(34px, 1fr))", page)
+        self.assertIn(b"step < 16", page)
+        self.assertIn(b"Copy current Auto groove", page)
+        self.assertIn(b"Discard unsaved groove changes?", page)
         self.assertNotIn(b'id="phrase"', page)
         self.assertNotIn(b'id="onset-timeout-bars"', page)
         self.assertTrue(
@@ -110,6 +132,8 @@ class TestControlWebServer(unittest.TestCase):
                 "input-device", "output-device", "drums-enabled", "style",                 "feel",
                                 "intensity", "master-level", "muted", "pairing-qr",
                 "display-pin", "phone-link",
+                "groove-select", "open-groove-editor", "groove-editor-panel",
+                "editor-target", "editor-name", "step-grid-rows", "save-groove", "editor-status",
             }.issubset(parser.ids)
         )
 
@@ -182,6 +206,95 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(json.loads(updated_body)["settings"]["onset_timeout_bars"], 2)
         self.assertEqual(restart, 409)
         self.assertTrue(json.loads(restart_body)["restart_required"])
+
+    def test_groove_api_requires_pairing_and_saves_validated_grooves(self):
+        tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+        tracks["kick"][0] = True
+        payload = {
+            "name": "Verse",
+            "tracks": tracks,
+            "levels": {instrument: 0.75 for instrument in INSTRUMENTS},
+        }
+
+        unpaired_list, _, _ = self.request("/api/grooves")
+        unpaired_save, _, _ = self.request(
+            "/api/grooves", method="POST", payload=payload
+        )
+        empty_list, _, empty_body = self.request("/api/grooves", authenticated=True)
+        cross_origin, _, _ = self.request(
+            "/api/grooves",
+            method="POST",
+            payload=payload,
+            authenticated=True,
+            origin="http://attacker.example",
+        )
+        saved_status, _, saved_body = self.request(
+            "/api/grooves", method="POST", payload=payload, authenticated=True
+        )
+        duplicate_status, _, duplicate_body = self.request(
+            "/api/grooves",
+            method="POST",
+            payload={**payload, "name": "verse"},
+            authenticated=True,
+        )
+        invalid_status, _, invalid_body = self.request(
+            "/api/grooves",
+            method="POST",
+            payload={**payload, "tracks": {**tracks, "kick": [1] * 16}},
+            authenticated=True,
+        )
+
+        self.assertEqual(unpaired_list, 401)
+        self.assertEqual(unpaired_save, 401)
+        self.assertEqual(json.loads(empty_body)["grooves"], [])
+        self.assertEqual(empty_list, 200)
+        self.assertEqual(cross_origin, 403)
+        self.assertEqual(saved_status, 200)
+        saved = json.loads(saved_body)["groove"]
+        self.assertEqual(saved["name"], "Verse")
+        self.assertEqual(len(saved["tracks"]["kick"]), 16)
+        self.assertEqual(duplicate_status, 400)
+        self.assertIn("already exists", json.loads(duplicate_body)["error"])
+        self.assertEqual(invalid_status, 400)
+        self.assertIn("booleans", json.loads(invalid_body)["error"])
+
+    def test_auto_groove_copy_endpoint_returns_a_sixteen_step_source_grid(self):
+        unpaired, _, _ = self.request("/api/grooves/auto")
+        status, _, body = self.request("/api/grooves/auto", authenticated=True)
+
+        self.assertEqual(unpaired, 401)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(json.loads(body)["pattern"]), 8)
+
+    def test_groove_api_reports_storage_errors(self):
+        with patch.object(
+            self.controller.groove_controller._groove_library,
+            "list_grooves",
+            side_effect=GrooveLibraryError("storage unavailable"),
+        ):
+            list_status, _, list_body = self.request("/api/grooves", authenticated=True)
+        tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+        payload = {
+            "name": "Verse",
+            "tracks": tracks,
+            "levels": {instrument: 0.75 for instrument in INSTRUMENTS},
+        }
+        with patch.object(
+            self.controller.groove_controller._groove_library,
+            "save_groove",
+            side_effect=GrooveLibraryError("disk unavailable"),
+        ):
+            save_status, _, save_body = self.request(
+                "/api/grooves",
+                method="POST",
+                payload=payload,
+                authenticated=True,
+            )
+
+        self.assertEqual(list_status, 500)
+        self.assertIn("storage unavailable", json.loads(list_body)["error"])
+        self.assertEqual(save_status, 500)
+        self.assertIn("disk unavailable", json.loads(save_body)["error"])
 
     def test_pairing_pin_is_single_use_and_issues_a_bearer_session(self):
         paired, _, paired_body = self.request(

@@ -7,9 +7,10 @@ from threading import Event, RLock, Thread
 from typing import Callable, Mapping
 
 from drum_companion.audio.analysis import AudioAnalyzer
-from drum_companion.audio.groove import GrooveFollower, STYLE_PROFILES
+from drum_companion.audio.groove import GrooveFollower, STYLE_PROFILES, generate_accompaniment
 from drum_companion.audio.input import CaptureError, MicrophoneCapture
 from drum_companion.audio.output import OutputError, PlaybackCoordinator, SampleOutput
+from drum_companion.groove_library import GrooveLibrary, SavedGroove
 
 
 class LiveControlError(RuntimeError):
@@ -24,6 +25,7 @@ class DeviceRestartRequired(LiveControlError):
 class LiveSettings:
     input_device: int | None = None
     output_device: int | None = None
+    selected_groove_id: str | None = None
     drums_enabled: bool = True
     style: str = "rock"
     feel: str = "tight"
@@ -49,11 +51,13 @@ class LiveAudioController:
         *,
         capture_factory: Callable[..., MicrophoneCapture] = MicrophoneCapture,
         output_factory: Callable[..., SampleOutput] = SampleOutput,
+        groove_library: GrooveLibrary | None = None,
     ) -> None:
         self._lock = RLock()
         self._settings = settings or LiveSettings()
         self._capture_factory = capture_factory
         self._output_factory = output_factory
+        self._groove_library = groove_library or GrooveLibrary()
         self._state = "stopped"
         self._error: str | None = None
         self._output_error: str | None = None
@@ -113,6 +117,10 @@ class LiveAudioController:
             raise ValueError(f"Unsupported setting(s): {', '.join(sorted(unknown))}")
 
         normalized = {name: self._normalize_setting(name, value) for name, value in values.items()}
+        if normalized.get("selected_groove_id") is not None:
+            selected = self._groove_library.get_groove(normalized["selected_groove_id"])
+            if selected is None:
+                raise ValueError("The selected saved groove does not exist")
         with self._lock:
             if self._state in {"starting", "running", "stopping"} and self._device_fields.intersection(normalized):
                 raise DeviceRestartRequired("Stop the live session before changing audio devices or drum playback")
@@ -139,6 +147,44 @@ class LiveAudioController:
                 "settings": asdict(self._settings),
                 **self._status,
             }
+
+    def list_saved_grooves(self) -> list[dict[str, object]]:
+        return [groove.to_dict() for groove in self._groove_library.list_grooves()]
+
+    def automatic_groove_pattern(self) -> list[str]:
+        with self._lock:
+            current = self._status["pattern"]
+            settings = self._settings
+        if current:
+            return list(current)
+        return generate_accompaniment(
+            settings.phrase,
+            settings.style,
+            settings.feel,
+            settings.intensity,
+        )
+
+    def save_saved_groove(self, values: Mapping[str, object]) -> dict[str, object]:
+        allowed = {"id", "name", "tracks", "levels"}
+        if set(values) - allowed or not {"name", "tracks", "levels"}.issubset(values):
+            raise ValueError("A groove must contain name, tracks, and levels, with only an optional id")
+        if not isinstance(values["tracks"], Mapping) or not isinstance(values["levels"], Mapping):
+            raise ValueError("Groove tracks and levels must be objects")
+        if "id" in values:
+            groove = SavedGroove(
+                id=values["id"],
+                name=values["name"],
+                tracks=values["tracks"],
+                levels=values["levels"],
+            )
+        else:
+            groove = SavedGroove.create(
+                name=values["name"],
+                tracks=values["tracks"],
+                levels=values["levels"],
+            )
+        self._groove_library.save_groove(groove)
+        return groove.to_dict()
 
     def _run(self) -> None:
         capture: MicrophoneCapture | None = None
@@ -209,7 +255,14 @@ class LiveAudioController:
 
                 decision = follower.update(observation)
                 if coordinator is not None:
-                    coordinator.update(decision)
+                    selected_groove = (
+                        self._groove_library.get_groove(settings.selected_groove_id)
+                        if settings.selected_groove_id is not None
+                        else None
+                    )
+                    if settings.selected_groove_id is not None and selected_groove is None:
+                        raise LiveControlError("The selected saved groove no longer exists")
+                    coordinator.update(decision, selected_groove)
                 with self._lock:
                     self._status = {
                         "tempo_bpm": decision.tempo_bpm,
@@ -258,6 +311,19 @@ class LiveAudioController:
                 return None
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{name} must be a non-negative device index or null")
+            return value
+        if name == "selected_groove_id":
+            if value is None:
+                return None
+            if not isinstance(value, str) or not value:
+                raise ValueError("selected_groove_id must be a UUID string or null")
+            from uuid import UUID
+
+            try:
+                if str(UUID(value)) != value:
+                    raise ValueError
+            except ValueError as exc:
+                raise ValueError("selected_groove_id must be a canonical UUID string or null") from exc
             return value
         if name in {"drums_enabled", "muted"}:
             if not isinstance(value, bool):

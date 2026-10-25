@@ -17,6 +17,7 @@ from qrcode.image.svg import SvgPathImage
 from drum_companion.audio.input import list_input_devices
 from drum_companion.audio.output import list_output_devices
 from drum_companion.control import DeviceRestartRequired, LiveAudioController, LiveControlError
+from drum_companion.groove_library import GrooveLibraryError
 
 
 class ControlHTTPServer(ThreadingHTTPServer):
@@ -62,6 +63,18 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/status":
             if self._require_session():
                 self._send_json(200, self.server.controller.snapshot())
+        elif path == "/api/grooves":
+            if self._require_session():
+                try:
+                    self._send_json(200, {"grooves": self.server.controller.list_saved_grooves()})
+                except GrooveLibraryError as exc:
+                    self._send_json(500, {"error": str(exc)})
+        elif path == "/api/grooves/auto":
+            if self._require_session():
+                self._send_json(
+                    200,
+                    {"pattern": self.server.controller.automatic_groove_pattern()},
+                )
         elif path == "/api/devices":
             if self._require_session():
                 self._send_json(
@@ -82,14 +95,14 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         if not self._check_origin():
             self._send_json(403, {"error": "Cross-origin request rejected"})
             return
+        if path != "/api/pair" and not self._require_session():
+            return
         payload = self._read_json()
         if payload is None:
             return
 
         if path == "/api/pair":
             self._pair(payload)
-            return
-        if not self._require_session():
             return
         try:
             if path == "/api/start":
@@ -98,8 +111,15 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/stop":
                 self.server.controller.stop()
                 self._send_json(200, self.server.controller.snapshot())
+            elif path == "/api/grooves":
+                groove = self.server.controller.save_saved_groove(payload)
+                self._send_json(200, {"groove": groove})
             else:
                 self._send_json(404, {"error": "Not found"})
+        except GrooveLibraryError as exc:
+            self._send_json(500, {"error": str(exc)})
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
         except LiveControlError as exc:
             self._send_json(409, {"error": str(exc)})
 
@@ -125,6 +145,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self._send_json(409, {"error": str(exc), "restart_required": True})
         except ValueError as exc:
             self._send_json(400, {"error": str(exc)})
+        except GrooveLibraryError as exc:
+            self._send_json(500, {"error": str(exc)})
         except LiveControlError as exc:
             self._send_json(409, {"error": str(exc)})
 

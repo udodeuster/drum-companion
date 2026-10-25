@@ -1,10 +1,12 @@
 import threading
+import tempfile
 import unittest
 from queue import Empty
 from time import monotonic
 from types import SimpleNamespace
 
 from drum_companion.control import DeviceRestartRequired, LiveAudioController
+from drum_companion.groove_library import GrooveLibrary, INSTRUMENTS, SavedGroove
 
 
 class IdleCapture:
@@ -103,6 +105,27 @@ class TestLiveAudioController(unittest.TestCase):
                 controller.update_settings({"onset_timeout_bars": timeout})
         with self.assertRaisesRegex(ValueError, "Unsupported setting"):
             controller.update_settings({"unknown": True})
+
+    def test_saved_groove_selection_is_validated_and_can_return_to_auto(self):
+        with tempfile.TemporaryDirectory() as directory:
+            library = GrooveLibrary(f"{directory}\\grooves.json")
+            groove = SavedGroove.create(
+                "Verse",
+                {instrument: [False] * 16 for instrument in INSTRUMENTS},
+                {instrument: 1.0 for instrument in INSTRUMENTS},
+            )
+            library.save_groove(groove)
+            controller = LiveAudioController(groove_library=library)
+
+            self.assertEqual(
+                controller.update_settings({"selected_groove_id": groove.id})["selected_groove_id"],
+                groove.id,
+            )
+            self.assertIsNone(controller.update_settings({"selected_groove_id": None})["selected_groove_id"])
+            with self.assertRaisesRegex(ValueError, "does not exist"):
+                controller.update_settings({"selected_groove_id": "22345678-1234-5678-1234-567812345678"})
+            with self.assertRaisesRegex(ValueError, "UUID"):
+                controller.update_settings({"selected_groove_id": "not-an-id"})
 
     def test_tempo_range_settings_are_validated_together(self):
         controller = LiveAudioController()

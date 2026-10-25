@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from drum_companion.groove_library import INSTRUMENTS, SavedGroove
 from drum_companion.models import AudioAnalysisObservation, GrooveDecision
 
 _OCTAVE_TEMPO_CONFIRMATION_SECONDS = 3.0
@@ -36,13 +37,15 @@ def pattern_to_events(
     if normalized_feel not in {"tight", "relaxed"}:
         raise ValueError(f"Unsupported feel: {feel}")
 
-    variation_bar = bar_index % 4 == 3
+    variation_bar = len(pattern) != 16 and bar_index % 4 == 3
+    step_seconds = (15.0 if len(pattern) == 16 else 30.0) / tempo_bpm
     events: list[DrumEvent] = []
     for step_index, cell in enumerate(pattern):
         tokens = set(cell)
         accented = "A" in tokens
-        offset_seconds = step_index * 30.0 / tempo_bpm
-        if normalized_feel == "relaxed" and step_index % 2:
+        offset_seconds = step_index * step_seconds
+        swing_step = step_index % (4 if len(pattern) == 16 else 2)
+        if normalized_feel == "relaxed" and swing_step == (2 if len(pattern) == 16 else 1):
             offset_seconds += 0.05 * 60.0 / tempo_bpm
         instruments: list[str] = []
         if "K" in tokens:
@@ -53,6 +56,10 @@ def pattern_to_events(
             instruments.append(
                 "open_hat" if variation_bar and step_index == len(pattern) - 1 else "closed_hat"
             )
+        if "O" in tokens:
+            instruments.append("open_hat")
+        if "C" in tokens:
+            instruments.append("cymbal")
         if variation_bar and step_index == 0 and accented:
             instruments.append("cymbal")
 
@@ -70,6 +77,22 @@ def pattern_to_events(
             events.append(DrumEvent(offset_seconds, "snare", 0.14))
 
     return tuple(events)
+
+
+def saved_groove_to_pattern(groove: SavedGroove) -> tuple[str, ...]:
+    """Encode authored track states as sixteen scheduler cells."""
+    tokens = {
+        "kick": "K",
+        "snare": "S",
+        "closed_hat": "H",
+        "open_hat": "O",
+        "cymbal": "C",
+    }
+    return tuple(
+        "".join(token for instrument, token in tokens.items() if groove.tracks[instrument][step])
+        or "----"
+        for step in range(16)
+    )
 
 
 def build_pattern(style: str, feel: str, intensity: float, bars: int = 1) -> list[str]:
