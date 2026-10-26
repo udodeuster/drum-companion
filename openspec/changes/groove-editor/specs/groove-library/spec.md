@@ -7,7 +7,7 @@ The groove library lets performers author and reuse named drum patterns while re
 ## ADDED Requirements
 
 ### Requirement: Edit a multi-track sixteen-step groove
-The system SHALL let users edit a groove as sixteen on/off steps for each of kick, snare, closed hi-hat, open hi-hat, and cymbal, with an independent track level from 0.0 to 1.0.
+The system SHALL let users edit a groove as sixteen on/off steps for each of kick, snare, closed hi-hat, open hi-hat, cymbal, rimshot, clap, high tom, low tom, ride, shaker, and cowbell, with an independent track level from 0.0 to 1.0.
 
 #### Scenario: Toggle an instrument step
 - **WHEN** a user toggles a cell in an instrument track
@@ -22,7 +22,7 @@ The system SHALL let users create a groove with all steps off or copy the curren
 
 #### Scenario: Create a blank groove
 - **WHEN** a user creates a groove from the blank option
-- **THEN** the editor SHALL show all five tracks with all sixteen steps off
+- **THEN** the editor SHALL show all twelve tracks with all sixteen steps off
 
 #### Scenario: Copy the automatic groove
 - **WHEN** a user creates a groove from the current automatic accompaniment

@@ -6,7 +6,7 @@ The live companion can generate and play grooves, but performers cannot shape in
 
 ## What Changes
 
-- Add a browser-based groove editor with a 16-step grid for kick, snare, closed hi-hat, open hi-hat, and cymbal tracks.
+- Add a browser-based groove editor with a 16-step grid for kick, snare, closed hi-hat, open hi-hat, cymbal, rimshot, clap, high tom, low tom, ride, shaker, and cowbell tracks.
 - Allow each step to be toggled and each track to have an independent level.
 - Let users create a groove from an empty grid or copy the current automatic groove, name it, edit it, and explicitly save it.
 - Provide an independent looping preview of the current unsaved editor draft, with adjustable BPM and bar-boundary updates as the draft changes.

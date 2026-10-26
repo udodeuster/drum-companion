@@ -12,7 +12,16 @@ from typing import Mapping
 from uuid import UUID, uuid4
 
 
-INSTRUMENTS = ("kick", "snare", "closed_hat", "open_hat", "cymbal")
+LEGACY_INSTRUMENTS = ("kick", "snare", "closed_hat", "open_hat", "cymbal")
+INSTRUMENTS = LEGACY_INSTRUMENTS + (
+    "rimshot",
+    "clap",
+    "tom_high",
+    "tom_low",
+    "ride",
+    "shaker",
+    "cowbell",
+)
 STEPS_PER_GROOVE = 16
 _LIBRARY_VERSION = 1
 
@@ -176,11 +185,17 @@ class GrooveLibrary:
             raise ValueError("Each groove must contain id, name, tracks, and levels")
         if not isinstance(item["tracks"], dict) or not isinstance(item["levels"], dict):
             raise ValueError("Groove tracks and levels must be objects")
+        tracks = item["tracks"]
+        levels = item["levels"]
+        # Grooves saved before the extra percussion tracks existed get empty tracks.
+        if set(tracks) == set(LEGACY_INSTRUMENTS) and set(levels) == set(LEGACY_INSTRUMENTS):
+            tracks = {**tracks, **{name: [False] * STEPS_PER_GROOVE for name in INSTRUMENTS if name not in tracks}}
+            levels = {**levels, **{name: 1.0 for name in INSTRUMENTS if name not in levels}}
         return SavedGroove(
             id=item["id"],
             name=item["name"],
-            tracks=item["tracks"],
-            levels=item["levels"],
+            tracks=tracks,
+            levels=levels,
         )
 
     def _write(self, grooves: tuple[SavedGroove, ...]) -> None:

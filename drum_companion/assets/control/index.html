@@ -210,14 +210,22 @@
     let sessionToken = sessionStorage.getItem(tokenKey);
     let polling = false;
     let pollingTimer = null;
-    const instruments = ["kick", "snare", "closed_hat", "open_hat", "cymbal"];
+    const instruments = ["kick", "snare", "closed_hat", "open_hat", "cymbal", "rimshot", "clap", "tom_high", "tom_low", "ride", "shaker", "cowbell"];
     const instrumentNames = {
       kick: "Kick",
       snare: "Snare",
       closed_hat: "Closed hat",
       open_hat: "Open hat",
-      cymbal: "Cymbal"
+      cymbal: "Cymbal",
+      rimshot: "Rimshot",
+      clap: "Clap",
+      tom_high: "Tom high",
+      tom_low: "Tom low",
+      ride: "Ride",
+      shaker: "Shaker",
+      cowbell: "Cowbell"
     };
+    const autoTokens = { O: "open_hat", C: "cymbal", R: "rimshot", P: "clap", t: "tom_high", T: "tom_low", D: "ride", X: "shaker", B: "cowbell" };
     let savedGrooves = [];
     let editorDraft = null;
     let editorDirty = false;
@@ -356,6 +364,9 @@
         if (tokens.has("K")) draft.tracks.kick[targetStep] = true;
         if (tokens.has("S") || tokens.has("g")) draft.tracks.snare[targetStep] = true;
         if (tokens.has("H")) draft.tracks.closed_hat[targetStep] = true;
+        for (const [token, instrument] of Object.entries(autoTokens)) {
+          if (tokens.has(token)) draft.tracks[instrument][targetStep] = true;
+        }
       }
       return draft;
     };

@@ -2,7 +2,7 @@
 
 ## 1. Groove Data and Persistence
 
-- [x] 1.1 Define and validate the saved-groove model (stable ID, unique non-empty name, five tracks, sixteen boolean steps, bounded track levels); verify valid and invalid cases with unit tests.
+- [x] 1.1 Define and validate the saved-groove model (stable ID, unique non-empty name, twelve tracks, sixteen boolean steps, bounded track levels); verify valid and invalid cases with unit tests.
 - [x] 1.2 Implement versioned host-local library loading and explicit atomic saves; verify restart persistence, duplicate-name rejection, and reported read/write failures with repository tests.
 
 ## 2. Audio Scheduling and Mixing

@@ -17,11 +17,17 @@ class TestBundledDrumAssets(unittest.TestCase):
         self.assertEqual(manifest["license"], "CC0-1.0")
         self.assertEqual(
             {item["instrument"] for item in assets},
-            {"kick", "snare", "closed hi-hat", "open hi-hat", "cymbal"},
+            {
+                "kick", "snare", "closed hi-hat", "open hi-hat", "cymbal",
+                "tom_high", "tom_low", "rimshot", "clap", "ride", "shaker", "cowbell",
+            },
         )
         for item in assets:
             self.assertEqual(item["license"], "CC0-1.0")
-            self.assertIn("freesound.org/people/", item["source_url"])
+            self.assertTrue(
+                "freesound.org/people/" in item["source_url"]
+                or item["source_url"] == "tools/generate_percussion.py"
+            )
             self.assertTrue(item["source_title"])
 
     def test_every_bundled_preview_decodes_offline(self):
@@ -32,7 +38,7 @@ class TestBundledDrumAssets(unittest.TestCase):
             audio, sample_rate = sf.read(path, dtype="float32", always_2d=True)
             self.assertEqual(sample_rate, 44100)
             self.assertGreater(audio.shape[0], 0)
-            self.assertEqual(audio.shape[1], 2)
+            self.assertIn(audio.shape[1], (1, 2))
             self.assertTrue(np.isfinite(audio).all())
 
 

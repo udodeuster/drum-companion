@@ -7,6 +7,16 @@ from drum_companion.models import AudioAnalysisObservation, GrooveDecision
 
 _OCTAVE_TEMPO_CONFIRMATION_SECONDS = 3.0
 
+_EXTRA_TOKENS = {
+    "R": "rimshot",
+    "P": "clap",
+    "t": "tom_high",
+    "T": "tom_low",
+    "D": "ride",
+    "X": "shaker",
+    "B": "cowbell",
+}
+
 STYLE_PROFILES = {
     "rock": {"density": 1.0, "accent": 1.0, "kick": [1, 0, 0, 0, 1, 0, 0, 0], "snare": [0, 0, 1, 0, 0, 0, 1, 0], "hihat": [1, 1, 1, 1, 1, 1, 1, 1], "ghost_snare_steps": [1, 5]},
     "folk": {"density": 0.7, "accent": 0.8, "kick": [1, 0, 0, 0, 1, 0, 0, 1], "snare": [0, 0, 1, 0, 0, 0, 1, 0], "hihat": [0, 1, 0, 1, 0, 1, 0, 1], "ghost_snare_steps": [1, 5]},
@@ -60,6 +70,11 @@ def pattern_to_events(
             instruments.append("open_hat")
         if "C" in tokens:
             instruments.append("cymbal")
+        for token, instrument in _EXTRA_TOKENS.items():
+            if token in tokens:
+                instruments.append(instrument)
+        if variation_bar and step_index == len(pattern) - 1 and "T" not in tokens and "S" not in tokens:
+            instruments.append("tom_low")
         if variation_bar and step_index == 0 and accented:
             instruments.append("cymbal")
 
@@ -70,6 +85,13 @@ def pattern_to_events(
                 "closed_hat": 0.48,
                 "open_hat": 0.64,
                 "cymbal": 0.7,
+                "rimshot": 0.7,
+                "clap": 0.7,
+                "tom_high": 0.72,
+                "tom_low": 0.74,
+                "ride": 0.55,
+                "shaker": 0.4,
+                "cowbell": 0.6,
             }[instrument]
             velocity = min(1.0, base_velocity * (1.15 if accented else 1.0))
             events.append(DrumEvent(offset_seconds, instrument, velocity))
@@ -87,6 +109,13 @@ def saved_groove_to_pattern(groove: SavedGroove) -> tuple[str, ...]:
         "closed_hat": "H",
         "open_hat": "O",
         "cymbal": "C",
+        "rimshot": "R",
+        "clap": "P",
+        "tom_high": "t",
+        "tom_low": "T",
+        "ride": "D",
+        "shaker": "X",
+        "cowbell": "B",
     }
     return tuple(
         "".join(token for instrument, token in tokens.items() if groove.tracks[instrument][step])
@@ -146,7 +175,17 @@ def generate_accompaniment(phrase: str, style: str, feel: str, intensity: float)
             if normalized_feel == "relaxed" and index in profile["ghost_snare_steps"]
             else "-"
         )
-        steps.append(f"{accent}{kick}{snare}{hihat}{ghost}")
+        extras = ""
+        if normalized_style == "folk":
+            if index == 6 and effective_intensity > 0.3:
+                extras += "R"
+            if index % 2 == 1 and effective_intensity > 0.4:
+                extras += "X"
+        elif normalized_style == "indie" and normalized_phrase == "chorus" and profile["hihat"][index]:
+            if effective_intensity > 0.2:
+                hihat = "-"
+                extras += "D"
+        steps.append(f"{accent}{kick}{snare}{hihat}{ghost}{extras}")
 
     return steps
 

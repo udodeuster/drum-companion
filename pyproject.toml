@@ -25,4 +25,4 @@ pythonpath = ["."]
 include = ["drum_companion*"]
 
 [tool.setuptools.package-data]
-drum_companion = ["assets/control/*.html", "assets/icon/*"]
+drum_companion = ["assets/control/*.html", "assets/icon/*", "assets/drums/*"]

@@ -9,6 +9,7 @@ from drum_companion.audio.groove import (
     saved_groove_to_pattern,
 )
 from drum_companion.audio.output import (
+    _STARTER_KIT_GAINS,
     OutputError,
     SampleBank,
     SampleMixer,
@@ -60,6 +61,14 @@ class TestGrooveEventMapping(unittest.TestCase):
         self.assertNotIn("accent", {event.instrument for event in events})
         self.assertGreater(events[0].velocity, events[2].velocity)
         self.assertEqual(events[-1].offset_seconds, 1.75)
+
+    def test_extra_percussion_tokens_map_to_instruments(self):
+        events = pattern_to_events(("RPtTDXB-",), tempo_bpm=120.0)
+
+        self.assertEqual(
+            {event.instrument for event in events},
+            {"rimshot", "clap", "tom_high", "tom_low", "ride", "shaker", "cowbell"},
+        )
 
     def test_adds_cymbal_and_open_hat_only_on_controlled_variation_bars(self):
         pattern = ("AK-H", "-S-H", "----", "K---", "A---", "-S-H", "----", "---H")
@@ -197,12 +206,12 @@ class TestSampleMixer(unittest.TestCase):
         asset_directory = Path(__file__).parents[1] / "drum_companion" / "assets" / "drums"
         bank = SampleBank.load_starter_kit(asset_directory, sample_rate=48000, channels=1)
 
-        self.assertEqual(set(bank.samples), {"kick", "snare", "closed_hat", "open_hat", "cymbal"})
+        self.assertEqual(set(bank.samples), set(INSTRUMENTS))
         for instrument, sample in bank.samples.items():
             self.assertEqual(sample.ndim, 2)
             self.assertEqual(sample.shape[1], 1)
             self.assertGreater(sample.shape[0], 0)
-            expected_peak = 0.95 * 1.25 if instrument == "kick" else 0.95
+            expected_peak = 0.95 * _STARTER_KIT_GAINS.get(instrument, 1.0)
             self.assertAlmostEqual(float(np.max(np.abs(sample))), expected_peak, delta=0.02)
 
 
@@ -591,7 +600,10 @@ class TestPlaybackCoordinator(unittest.TestCase):
     def test_inactive_and_recovered_decisions_keep_audio_callback_playing(self):
         devices = [{"name": "Speakers", "max_output_channels": 2, "default_samplerate": 1000}]
         bank = SampleBank(
-            {"kick": np.full((32, 2), 0.5, dtype=np.float32)},
+            {
+                "kick": np.full((32, 2), 0.5, dtype=np.float32),
+                "tom_low": np.full((32, 2), 0.5, dtype=np.float32),
+            },
             sample_rate=1000,
             channels=2,
         )

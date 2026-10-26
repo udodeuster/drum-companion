@@ -13,10 +13,19 @@ import sounddevice as sd
 
 from drum_companion.audio.groove import DrumEvent, saved_groove_to_pattern
 from drum_companion.audio.scheduler import GrooveScheduler
-from drum_companion.groove_library import SavedGroove
+from drum_companion.groove_library import INSTRUMENTS, SavedGroove
 from drum_companion.models import GrooveDecision
 
-_STARTER_KIT_GAINS = {"kick": 1.25}
+_STARTER_KIT_GAINS = {
+    "kick": 1.25,
+    "tom_high": 0.75,
+    "tom_low": 0.75,
+    "rimshot": 0.8,
+    "clap": 0.8,
+    "ride": 0.6,
+    "shaker": 0.5,
+    "cowbell": 0.6,
+}
 
 
 class AudioAssetError(RuntimeError):
@@ -122,7 +131,10 @@ class SampleBank:
             audio *= _STARTER_KIT_GAINS.get(item["instrument"].replace(" ", "_"), 1.0)
             samples[item["instrument"].replace(" ", "_")] = audio
 
-        expected = {"kick", "snare", "closed_hi-hat", "open_hi-hat", "cymbal"}
+        expected = {
+            "closed_hi-hat" if name == "closed_hat" else "open_hi-hat" if name == "open_hat" else name
+            for name in INSTRUMENTS
+        }
         if set(samples) != expected:
             raise AudioAssetError(f"Starter kit instruments must be {sorted(expected)}")
         samples["closed_hat"] = samples.pop("closed_hi-hat")

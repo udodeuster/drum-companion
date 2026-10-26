@@ -22,6 +22,25 @@ def make_groove(**overrides):
 
 
 class TestSavedGroove(unittest.TestCase):
+    def test_loads_legacy_five_track_library_with_empty_new_tracks(self):
+        legacy = ("kick", "snare", "closed_hat", "open_hat", "cymbal")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "grooves.json"
+            item = {
+                "id": "12345678-1234-5678-1234-567812345678",
+                "name": "Old",
+                "tracks": {name: [name == "kick"] + [False] * 15 for name in legacy},
+                "levels": {name: 0.5 for name in legacy},
+            }
+            path.write_text(json.dumps({"version": 1, "grooves": [item]}), encoding="utf-8")
+
+            groove = GrooveLibrary(path).list_grooves()[0]
+
+        self.assertEqual(set(groove.tracks), set(INSTRUMENTS))
+        self.assertTrue(groove.tracks["kick"][0])
+        self.assertFalse(any(groove.tracks["cowbell"]))
+        self.assertEqual(groove.levels["cowbell"], 1.0)
+        self.assertEqual(groove.levels["kick"], 0.5)
     def test_creates_stable_id_and_normalizes_immutable_track_data(self):
         groove = SavedGroove.create(
             "Verse",
