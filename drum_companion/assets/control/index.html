@@ -4,14 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#192c2b">
-  <title>Drum Companion</title>
+  <link rel="icon" type="image/png" href="/icon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">  <title>Drum Companion</title>
   <style>
     :root { color-scheme: light; font-family: "Trebuchet MS", "Segoe UI", sans-serif; background: #edf1ed; color: #182b2a; }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; }
     main { width: min(860px, 100%); margin: 0 auto; padding: 14px 14px 28px; }
     header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 18px; background: #192c2b; color: #f4f5ed; border-radius: 8px; }
-    h1 { margin: 0; font: 700 22px Georgia, serif; }
+    h1 { display: flex; align-items: center; gap: 10px; margin: 0; font: 700 22px Georgia, serif; }
+    .app-logo { border-radius: 7px; }
     header p { margin: 0; color: #c6d3c9; font-size: 13px; }
     .live-indicator { display: inline-flex; align-items: center; gap: 9px; color: #dce8dd; font-size: 14px; white-space: nowrap; }
     .live-indicator::before { width: 9px; height: 9px; content: ""; border-radius: 50%; background: #8b9b90; }
@@ -81,7 +83,7 @@
 <body>
   <main>
     <header>
-      <h1>Drum Companion</h1>
+      <h1><img class="app-logo" src="/icon.png" alt="" width="32" height="32">Drum Companion</h1>
       <p>Live performance control</p>
     </header>
     <dialog id="welcome-dialog" aria-labelledby="intro-heading">
@@ -138,7 +140,6 @@
         <h2 id="groove-heading">Groove</h2>
         <div class="settings-grid">
           <div><label for="groove-select">Playback groove</label><select id="groove-select"><option value="">Auto</option></select></div>
-          <div class="toggle"><button id="open-groove-editor" type="button" class="secondary">Edit grooves</button></div>
           <div><label for="style">Style</label><select id="style"><option>rock</option><option>folk</option><option>indie</option></select></div>
           <div><label for="feel">Feel</label><select id="feel"><option>tight</option><option>relaxed</option></select></div>
           <div>
@@ -149,6 +150,7 @@
             <div class="range-heading"><label for="master-level">Master level</label><output id="master-level-value">0.75</output></div>
             <input id="master-level" type="range" min="0" max="1" step="0.01" value="0.75">
           </div>
+          <label class="toggle"><input id="muted" type="checkbox"> Mute drum output</label>
           <div>
             <div class="range-heading"><label for="min-tempo">Min BPM</label><output id="min-tempo-value">40</output></div>
             <input id="min-tempo" type="range" min="30" max="150" step="1" value="40">
@@ -157,7 +159,7 @@
             <div class="range-heading"><label for="max-tempo">Max BPM</label><output id="max-tempo-value">140</output></div>
             <input id="max-tempo" type="range" min="60" max="300" step="1" value="140">
           </div>
-          <label class="toggle"><input id="muted" type="checkbox"> Mute drum output</label>
+          <div class="toggle"><button id="open-groove-editor" type="button" class="secondary">Edit grooves</button></div>
         </div>
         <p class="hint">Tight keeps eighths straight; relaxed uses 55% swing with quiet rock/folk ghost snares. Intensity shapes strength and extra accents; core kick and backbeat remain above zero. Changes affect future bars only.</p>
         <p class="hint">Tempo holds through half/double-time ambiguity until three reliable estimates agree. Once started, the groove and tempo keep playing until you stop.</p>

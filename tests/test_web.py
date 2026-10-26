@@ -326,6 +326,19 @@ class TestControlWebServer(unittest.TestCase):
         self.assertTrue(json.loads(body)["shutting_down"])
         self.assertFalse(self.thread.is_alive())
 
+    def test_serves_app_icon_for_browser_and_page_header(self):
+        status, content_type, body = self.request("/icon.png")
+        favicon_status, favicon_type, _ = self.request("/favicon.ico")
+        touch_status, _, _ = self.request("/apple-touch-icon.png")
+        _, _, page = self.request("/")
+
+        self.assertEqual((status, content_type), (200, "image/png"))
+        self.assertTrue(body.startswith(b"\x89PNG"))
+        self.assertEqual((favicon_status, favicon_type), (200, "image/png"))
+        self.assertEqual(touch_status, 200)
+        self.assertIn(b'rel="icon"', page)
+        self.assertIn(b'class="app-logo"', page)
+
     def test_groove_can_be_renamed_and_deleted_with_auth(self):
         tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
         payload = {"name": "Verse", "tracks": tracks, "levels": {i: 1.0 for i in INSTRUMENTS}}

@@ -19,6 +19,12 @@ from drum_companion.audio.output import list_output_devices
 from drum_companion.control import DeviceRestartRequired, LiveAudioController, LiveControlError
 from drum_companion.groove_library import GrooveLibraryError
 
+_ICON_ROUTES = {
+    "/icon.png": "icon.png",
+    "/favicon.ico": "icon.png",
+    "/apple-touch-icon.png": "apple-touch-icon.png",
+}
+
 
 class ControlHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
@@ -53,6 +59,8 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/":
             self._serve_page()
+        elif path in _ICON_ROUTES:
+            self._serve_icon(_ICON_ROUTES[path])
         elif path in {"/api/pairing", "/api/pairing-qr.svg"}:
             if not self._loopback_client():
                 self._send_json(403, {"error": "Pairing details are only available on the host computer"})
@@ -314,6 +322,20 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self._set_security_headers()
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def _serve_icon(self, filename: str) -> None:
+        try:
+            content = (Path(__file__).parent / "assets" / "icon" / filename).read_bytes()
+        except OSError:
+            self._send_json(404, {"error": "Not found"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Cache-Control", "public, max-age=86400")
         self._set_security_headers()
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
