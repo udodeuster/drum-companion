@@ -24,10 +24,7 @@ class TestBundledDrumAssets(unittest.TestCase):
         )
         for item in assets:
             self.assertEqual(item["license"], "CC0-1.0")
-            self.assertTrue(
-                "freesound.org/people/" in item["source_url"]
-                or item["source_url"] == "tools/generate_percussion.py"
-            )
+            self.assertIn("freesound.org/people/", item["source_url"])
             self.assertTrue(item["source_title"])
 
     def test_every_bundled_preview_decodes_offline(self):

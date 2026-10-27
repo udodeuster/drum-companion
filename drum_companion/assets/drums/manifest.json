@@ -5,7 +5,7 @@
   "source_author": "johnnydekk",
   "license": "CC0-1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "note": "Toms and the original five sounds come from the CC0 pack. Rimshot, clap, ride, shaker and cowbell are synthesised by tools/generate_percussion.py and dedicated to CC0-1.0. Bundled files are the publicly accessible HQ MP3 previews of the listed CC0 WAV originals. Each individual sound page displayed CC0. Original WAV downloads require a Freesound login. The preview files are included as offline playback assets.",
+  "note": "All assets are CC0-1.0. The original kit and tom previews come from the Fractanimal pack; rimshot, ride bell, handclap, shaker and cowbell are the supplied original WAV files from the listed Freesound sound pages. These files are bundled for offline playback.",
   "assets": [
     {
       "file": "kick.mp3",
@@ -78,49 +78,49 @@
       "original_format": "WAV, stereo, 44100 Hz, 24-bit"
     },
     {
-      "file": "rimshot.wav",
+      "file": "581456__johnnydekk__fractanimal_acoustic_drum_kit_snare_rimshot_1.wav",
       "instrument": "rimshot",
-      "source_title": "Synthesised rimshot",
-      "source_url": "tools/generate_percussion.py",
+      "source_title": "Fractanimal_Acoustic_Drum_Kit_Snare_Rimshot_1.wav",
+      "source_url": "https://freesound.org/people/johnnydekk/sounds/581456/",
       "license": "CC0-1.0",
       "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-      "original_format": "Generated WAV, mono, 44100 Hz, 16-bit"
+      "original_format": "WAV, stereo, 44100 Hz, 24-bit"
     },
     {
-      "file": "clap.wav",
+      "file": "493717__bastianpusch__handclap14.wav",
       "instrument": "clap",
-      "source_title": "Synthesised handclap",
-      "source_url": "tools/generate_percussion.py",
+      "source_title": "HandClap14.wav",
+      "source_url": "https://freesound.org/people/bastianpusch/sounds/493717/",
       "license": "CC0-1.0",
       "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-      "original_format": "Generated WAV, mono, 44100 Hz, 16-bit"
+      "original_format": "WAV, stereo, 44100 Hz, 16-bit"
     },
     {
-      "file": "ride.wav",
+      "file": "581470__johnnydekk__fractanimal_acoustic_drum_kit_cymbal_centre_bell.wav",
       "instrument": "ride",
-      "source_title": "Synthesised ride cymbal",
-      "source_url": "tools/generate_percussion.py",
+      "source_title": "Fractanimal_Acoustic_Drum_Kit_Cymbal_Centre_Bell.wav",
+      "source_url": "https://freesound.org/people/johnnydekk/sounds/581470/",
       "license": "CC0-1.0",
       "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-      "original_format": "Generated WAV, mono, 44100 Hz, 16-bit"
+      "original_format": "WAV, stereo, 44100 Hz, 24-bit; centre-bell strike"
     },
     {
-      "file": "shaker.wav",
+      "file": "524889__thecoolmanarm2__shaker-1.wav",
       "instrument": "shaker",
-      "source_title": "Synthesised shaker",
-      "source_url": "tools/generate_percussion.py",
+      "source_title": "Shaker 1.wav",
+      "source_url": "https://freesound.org/people/TheCoolManARM2/sounds/524889/",
       "license": "CC0-1.0",
       "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-      "original_format": "Generated WAV, mono, 44100 Hz, 16-bit"
+      "original_format": "WAV, stereo, 44100 Hz, floating point"
     },
     {
-      "file": "cowbell.wav",
+      "file": "75339__neotone__cowbell2.wav",
       "instrument": "cowbell",
-      "source_title": "Synthesised cowbell",
-      "source_url": "tools/generate_percussion.py",
+      "source_title": "Cowbell2.wav",
+      "source_url": "https://freesound.org/people/Neotone/sounds/75339/",
       "license": "CC0-1.0",
       "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-      "original_format": "Generated WAV, mono, 44100 Hz, 16-bit"
+      "original_format": "WAV, stereo, 44100 Hz, 16-bit"
     }
   ]
 }
