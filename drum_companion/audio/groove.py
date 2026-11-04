@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from drum_companion.groove_library import INSTRUMENTS, SavedGroove
 from drum_companion.models import AudioAnalysisObservation, GrooveDecision
 
 _OCTAVE_TEMPO_CONFIRMATION_SECONDS = 3.0
+_TEMPO_CHANGE_CONFIRMATION_SECONDS = 8.0
+_TEMPO_ANCHOR_BAND = 0.06
+_TEMPO_REANCHOR_SECONDS = 4.0
+_PAUSE_FADE_AFTER_BARS = 1.0
+_PAUSE_KICK_ONLY_AFTER_BARS = 5.0
+_PAUSE_FADE_FACTOR = 0.4
 
 _EXTRA_TOKENS = {
     "R": "rimshot",
@@ -99,6 +106,10 @@ def pattern_to_events(
             events.append(DrumEvent(offset_seconds, "snare", 0.14))
 
     return tuple(events)
+
+
+def kick_only_pattern(pattern: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    return tuple("K" if "K" in cell else "-" for cell in pattern)
 
 
 def saved_groove_to_pattern(groove: SavedGroove) -> tuple[str, ...]:
@@ -201,6 +212,7 @@ class GrooveFollower:
         phrase: str = "verse",
         onset_timeout_bars: int = 1,
         lock_pulse_octave: bool = False,
+        lock_tempo: bool = False,
     ) -> None:
         if isinstance(onset_timeout_bars, bool) or onset_timeout_bars not in {0, 1, 2, 4}:
             raise ValueError("onset_timeout_bars must be one of 0, 1, 2, or 4 bars")
@@ -211,6 +223,9 @@ class GrooveFollower:
         self.onset_timeout_bars = onset_timeout_bars
         # With drum playback, microphone bleed of the drums can look like a double-time pulse.
         self.lock_pulse_octave = lock_pulse_octave
+        # Keeps the first reliable tempo for the whole session.
+        self.lock_tempo = lock_tempo
+        self._pause_started_seconds: float | None = None
         self._last_stable_tempo: float | None = None
         self._last_detected_onset: float | None = None
         self._last_pattern: tuple[str, ...] | None = None
@@ -218,6 +233,7 @@ class GrooveFollower:
         self._pending_octave_tempo: float | None = None
         self._pending_octave_observations = 0
         self._pending_octave_since_seconds: float | None = None
+        self._free_tempo_until = -math.inf
 
     def update(self, observation: AudioAnalysisObservation) -> GrooveDecision:
         if observation.onset_times_seconds:
@@ -248,47 +264,65 @@ class GrooveFollower:
         )
         tempo_update_accepted = False
         if reliable and observation.tempo_bpm is not None:
-            if (
-                self._last_stable_tempo is not None
-                and self._is_octave_tempo_change(self._last_stable_tempo, observation.tempo_bpm)
-            ):
-                if self.lock_pulse_octave:
-                    pass
-                elif (
+            candidate = observation.tempo_bpm
+            anchor = self._last_stable_tempo
+            is_octave = anchor is not None and self._is_octave_tempo_change(anchor, candidate)
+            if anchor is None:
+                self._accept_tempo(candidate)
+                tempo_update_accepted = True
+            elif self.lock_tempo or (is_octave and self.lock_pulse_octave):
+                pass
+            elif observation.timestamp_seconds < self._free_tempo_until:
+                self._accept_tempo(candidate)
+                tempo_update_accepted = True
+            elif not is_octave and abs(candidate / anchor - 1.0) <= _TEMPO_ANCHOR_BAND:
+                self._clear_pending_tempo()
+            else:
+                # A different tempo must persist before it replaces the anchor.
+                if (
                     self._pending_octave_tempo is not None
-                    and abs(observation.tempo_bpm - self._pending_octave_tempo)
+                    and abs(candidate - self._pending_octave_tempo)
                     <= self._pending_octave_tempo * 0.05
                 ):
                     self._pending_octave_observations += 1
                 else:
-                    self._pending_octave_tempo = observation.tempo_bpm
+                    self._pending_octave_tempo = candidate
                     self._pending_octave_observations = 1
                     self._pending_octave_since_seconds = observation.timestamp_seconds
+                confirmation_seconds = (
+                    _OCTAVE_TEMPO_CONFIRMATION_SECONDS if is_octave else _TEMPO_CHANGE_CONFIRMATION_SECONDS
+                )
                 if (
                     self._pending_octave_observations >= 3
                     and self._pending_octave_since_seconds is not None
                     and observation.timestamp_seconds - self._pending_octave_since_seconds
-                    >= _OCTAVE_TEMPO_CONFIRMATION_SECONDS
+                    >= confirmation_seconds
                 ):
-                    self._last_stable_tempo = observation.tempo_bpm
+                    self._accept_tempo(candidate)
                     tempo_update_accepted = True
-                    self._pending_octave_tempo = None
-                    self._pending_octave_observations = 0
-                    self._pending_octave_since_seconds = None
-            else:
-                self._last_stable_tempo = observation.tempo_bpm
-                tempo_update_accepted = True
-                self._pending_octave_tempo = None
-                self._pending_octave_observations = 0
-                self._pending_octave_since_seconds = None
         else:
-            self._pending_octave_tempo = None
-            self._pending_octave_observations = 0
-            self._pending_octave_since_seconds = None
+            self._clear_pending_tempo()
 
+        if not musical_activity_active:
+            self._free_tempo_until = math.inf
+            if self._pause_started_seconds is None:
+                self._pause_started_seconds = observation.timestamp_seconds
+        else:
+            if self._pause_started_seconds is not None:
+                # After a pause the tempo may re-anchor briefly, then it is held again.
+                self._free_tempo_until = observation.timestamp_seconds + _TEMPO_REANCHOR_SECONDS
+            self._pause_started_seconds = None
+
+        kick_only = False
         if not musical_activity_active and self._last_pattern is not None:
             effective_intensity = self._last_effective_intensity
             pattern = self._last_pattern
+            paused_bars = self._paused_bars(observation.timestamp_seconds)
+            if paused_bars >= _PAUSE_FADE_AFTER_BARS:
+                effective_intensity *= _PAUSE_FADE_FACTOR
+            if paused_bars >= _PAUSE_KICK_ONLY_AFTER_BARS:
+                kick_only = True
+                pattern = kick_only_pattern(pattern)
         else:
             if musical_activity_active and self._last_stable_tempo is not None:
                 effective_intensity = self.intensity
@@ -319,7 +353,22 @@ class GrooveFollower:
             signal_active=observation.signal_active,
             musical_activity_active=musical_activity_active,
             feel=self.feel,
+            kick_only=kick_only,
         )
+
+    def _accept_tempo(self, tempo_bpm: float) -> None:
+        self._last_stable_tempo = tempo_bpm
+        self._clear_pending_tempo()
+
+    def _clear_pending_tempo(self) -> None:
+        self._pending_octave_tempo = None
+        self._pending_octave_observations = 0
+        self._pending_octave_since_seconds = None
+
+    def _paused_bars(self, timestamp_seconds: float) -> float:
+        if self._pause_started_seconds is None or self._last_stable_tempo is None:
+            return 0.0
+        return (timestamp_seconds - self._pause_started_seconds) * self._last_stable_tempo / 240.0
 
     @staticmethod
     def _is_octave_tempo_change(stable_tempo: float, candidate_tempo: float) -> bool:

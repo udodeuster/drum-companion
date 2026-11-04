@@ -49,6 +49,7 @@ class GrooveDecision:
     signal_active: bool
     musical_activity_active: bool = True
     feel: str = "tight"
+    kick_only: bool = False
 
 
 @dataclass(frozen=True)

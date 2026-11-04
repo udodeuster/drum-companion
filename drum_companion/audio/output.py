@@ -11,7 +11,7 @@ import numpy as np
 import soundfile as sf
 import sounddevice as sd
 
-from drum_companion.audio.groove import DrumEvent, saved_groove_to_pattern
+from drum_companion.audio.groove import DrumEvent, kick_only_pattern, saved_groove_to_pattern
 from drum_companion.audio.scheduler import GrooveScheduler
 from drum_companion.groove_library import INSTRUMENTS, SavedGroove
 from drum_companion.models import GrooveDecision
@@ -429,6 +429,8 @@ class PlaybackCoordinator:
         if self.output.sample_bank is None:
             raise OutputError("Output sample bank is not loaded")
         pattern = saved_groove_to_pattern(groove) if groove is not None else decision.pattern
+        if decision.kick_only:
+            pattern = kick_only_pattern(pattern)
         track_levels = groove.levels if groove is not None else None
         if self.scheduler is None:
             if decision.tempo_bpm is None:

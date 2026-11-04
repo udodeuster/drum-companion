@@ -141,21 +141,28 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b"55% swing", page)
         self.assertIn(b"core kick and backbeat remain above zero", page)
         self.assertIn(b"three reliable estimates agree", page)
-        self.assertIn(b"repeat(16, minmax(34px, 1fr))", page)
+        self.assertIn(b"repeat(16, minmax(30px, 1fr))", page)
         self.assertIn(b"step < 16", page)
         self.assertIn(b"Copy current Auto groove", page)
+        self.assertIn(b'const target = selectedGrooveId || "copy-auto";', page)
+        self.assertIn(b"setEditorDraft(groove, false);", page)
+        self.assertIn(b"autoPatternToDraft(pattern)", page)
         self.assertIn(b"Discard unsaved groove changes?", page)
         self.assertIn(b"/api/preview/start", page)
         self.assertIn(b"/api/preview/stop", page)
         self.assertIn(b"preview.error", page)
-        self.assertIn(b"30 and 300 BPM", page)
+        self.assertIn(b'id="preview-tempo" type="number" min="30" max="300" step="any"', page)
+        self.assertIn(b"Number(preview.tempo_bpm).toFixed(1)", page)
+        self.assertIn(b"if (!previewTempo.validity.valid)", page)
+        self.assertIn(b'preview-status").textContent = error.message', page)
+        self.assertIn(b"Preview BPM must be between 30 and 300.", page)
         self.assertNotIn(b'id="phrase"', page)
         self.assertNotIn(b'id="onset-timeout-bars"', page)
         self.assertTrue(
             {
                 "start", "stop", "tempo", "signal", "confidence", "energy", "pattern",
                 "input-device", "output-device", "drums-enabled", "style",                 "feel",
-                                "intensity", "master-level", "muted", "pairing-qr",
+                                "intensity", "master-level", "muted", "lock-tempo", "pairing-qr",
                 "display-pin", "phone-link",
                 "groove-select", "open-groove-editor", "groove-editor-panel",
                 "editor-target", "editor-name", "step-grid-rows", "save-groove", "delete-groove", "editor-status",
@@ -282,9 +289,11 @@ class TestControlWebServer(unittest.TestCase):
             authenticated=True,
             origin="http://attacker.example",
         )
+        self.controller.state = "running"
         saved_status, _, saved_body = self.request(
             "/api/grooves", method="POST", payload=payload, authenticated=True
         )
+        live_status, _, live_body = self.request("/api/status", authenticated=True)
         duplicate_status, _, duplicate_body = self.request(
             "/api/grooves",
             method="POST",
@@ -307,6 +316,8 @@ class TestControlWebServer(unittest.TestCase):
         saved = json.loads(saved_body)["groove"]
         self.assertEqual(saved["name"], "Verse")
         self.assertEqual(len(saved["tracks"]["kick"]), 16)
+        self.assertEqual(live_status, 200)
+        self.assertIsNone(json.loads(live_body)["settings"]["selected_groove_id"])
         self.assertEqual(duplicate_status, 400)
         self.assertIn("already exists", json.loads(duplicate_body)["error"])
         self.assertEqual(invalid_status, 400)

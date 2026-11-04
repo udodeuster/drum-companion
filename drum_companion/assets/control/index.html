@@ -53,16 +53,21 @@
     .pairing-details img { width: 156px; height: 156px; padding: 8px; background: #fff; border: 1px solid #d4ddd6; }
     .pairing-details strong { display: block; margin: 5px 0 12px; font-size: 19px; }
     .pairing-details a { overflow-wrap: anywhere; color: #a13b27; }
-    .editor-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 8px; }
-    .preview-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 10px; }
+    #groove-editor-panel { padding: 10px 12px; }
+    #groove-editor-panel h2 { margin-bottom: 6px; }
+    .editor-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 6px; }
+    .editor-toolbar select, .editor-toolbar input[type="text"], .preview-tempo input { min-height: 30px; }
+    #groove-editor-panel button { min-height: 30px; padding: 0 12px; }
+    .preview-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 6px; margin-top: 7px; }
     .preview-tempo { width: 110px; }
+    .preview-tempo input { width: 100%; padding: 4px 8px; border: 1px solid #9daea5; border-radius: 4px; background: #fff; color: inherit; font: inherit; }
     .preview-status { flex: 1; min-width: 180px; margin: 0; color: #52655d; font-size: 12px; }
-    .editor-track { margin-top: 12px; padding: 9px; background: #f1f4f0; border-radius: 4px; }
-    .track-heading { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(120px, 2fr) 42px; align-items: center; gap: 8px; }
+    .editor-track { margin-top: 6px; padding: 6px; background: #f1f4f0; border-radius: 4px; }
+    .track-heading { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(120px, 2fr) 42px; align-items: center; gap: 6px; }
     .track-name { font-size: 13px; font-weight: 700; }
-    .step-grid-scroll { overflow-x: auto; padding: 5px 0 2px; }
-    .step-grid { display: grid; grid-template-columns: repeat(16, minmax(34px, 1fr)); gap: 4px; min-width: 604px; }
-    button.step-cell { min-height: 40px; padding: 0; border: 1px solid #aab8af; background: #fff; color: #19302d; font-size: 12px; }
+    .step-grid-scroll { overflow-x: auto; padding: 3px 0 1px; }
+    .step-grid { display: grid; grid-template-columns: repeat(16, minmax(30px, 1fr)); gap: 3px; min-width: 525px; }
+    button.step-cell { min-height: 30px; padding: 0; border: 1px solid #aab8af; background: #fff; color: #19302d; font-size: 11px; }
     button.step-cell[aria-pressed="true"] { border-color: #a33c28; background: #d65a3c; color: #fff; }
     .editor-status { min-height: 1.2em; margin: 8px 0 0; color: #52655d; font-size: 12px; }
     [hidden] { display: none !important; }
@@ -151,6 +156,7 @@
             <input id="master-level" type="range" min="0" max="1" step="0.01" value="0.75">
           </div>
           <label class="toggle"><input id="muted" type="checkbox"> Mute drum output</label>
+          <label class="toggle"><input id="lock-tempo" type="checkbox"> Lock tempo for whole song</label>
           <div>
             <div class="range-heading"><label for="min-tempo">Min BPM</label><output id="min-tempo-value">40</output></div>
             <input id="min-tempo" type="range" min="30" max="150" step="1" value="40">
@@ -184,7 +190,7 @@
         <div class="preview-controls">
           <div class="preview-tempo">
             <label for="preview-tempo">Preview BPM</label>
-            <input id="preview-tempo" type="number" min="30" max="300" step="0.1" value="100" required>
+            <input id="preview-tempo" type="number" min="30" max="300" step="any" value="100" required>
           </div>
           <button id="preview-start" type="button">Preview on host</button>
           <button id="preview-stop" type="button" class="secondary" disabled>Stop preview</button>
@@ -385,7 +391,7 @@
       if (status.error || status.output_error) showMessage(status.error || status.output_error);
       const preview = status.preview || { state: "stopped", running: false, tempo_bpm: 100, error: null };
       const previewTempo = document.querySelector("#preview-tempo");
-      if (document.activeElement !== previewTempo) previewTempo.value = preview.tempo_bpm;
+      if (document.activeElement !== previewTempo) previewTempo.value = Number(preview.tempo_bpm).toFixed(1);
       document.querySelector("#preview-start").disabled = status.running || preview.running;
       document.querySelector("#preview-stop").disabled = !preview.running;
       document.querySelector("#preview-status").textContent = preview.error
@@ -397,8 +403,8 @@
       const grooveSelect = document.querySelector("#groove-select");
       if (document.activeElement !== grooveSelect) grooveSelect.value = settings.selected_groove_id || "";
       for (const name of ["style", "feel"]) document.querySelector(`#${name}`).value = settings[name];
-      for (const name of ["muted", "drums-enabled"]) {
-        const key = name === "drums-enabled" ? "drums_enabled" : name;
+      for (const name of ["muted", "drums-enabled", "lock-tempo"]) {
+        const key = name.replace("-", "_");
         document.querySelector(`#${name}`).checked = settings[key];
       }
       for (const [name, key] of [["intensity", "intensity"], ["master-level", "master_level"]]) {
@@ -444,12 +450,21 @@
     const queuePreviewUpdate = () => {
       if (!latestStatus?.preview?.running || !editorDraft) return;
       clearTimeout(previewUpdateTimer);
+      const previewTempo = document.querySelector("#preview-tempo");
+      if (!previewTempo.validity.valid) {
+        document.querySelector("#preview-status").textContent = "Preview BPM must be between 30 and 300.";
+        return;
+      }
       previewUpdateTimer = setTimeout(() => withMessage(async () => {
-        await api("/api/preview", {
-          method: "PATCH",
-          body: JSON.stringify(currentPreviewPayload())
-        });
-        await refreshStatus();
+        try {
+          await api("/api/preview", {
+            method: "PATCH",
+            body: JSON.stringify(currentPreviewPayload())
+          });
+          await refreshStatus();
+        } catch (error) {
+          document.querySelector("#preview-status").textContent = error.message;
+        }
       }), 180);
     };
     const loadEditorTarget = (value) => withMessage(async () => {
@@ -515,7 +530,8 @@
     document.querySelector("#preview-start").addEventListener("click", () => withMessage(async () => {
       const payload = currentPreviewPayload();
       if (!document.querySelector("#preview-tempo").checkValidity()) {
-        throw new Error("Preview tempo must be between 30 and 300 BPM.");
+        document.querySelector("#preview-status").textContent = "Preview BPM must be between 30 and 300.";
+        return;
       }
       try {
         await api("/api/preview/start", {
@@ -524,7 +540,7 @@
         });
       } catch (error) {
         document.querySelector("#preview-status").textContent = error.message;
-        throw error;
+        return;
       }
       await refreshStatus();
     }));
@@ -540,7 +556,10 @@
       if (!editorDraft && latestStatus?.preview?.running && latestStatus.preview.draft) {
         setEditorDraft({ ...latestStatus.preview.draft, name: "" }, true);
       } else if (!editorDraft) {
-        loadEditorTarget(document.querySelector("#editor-target").value);
+        const selectedGrooveId = latestStatus?.settings?.selected_groove_id;
+        const target = selectedGrooveId || "copy-auto";
+        document.querySelector("#editor-target").value = target;
+        loadEditorTarget(target);
       }
       document.querySelector("#editor-target").focus();
     });
@@ -629,6 +648,7 @@
     }
     document.querySelector("#drums-enabled").addEventListener("change", (event) => updateSetting("drums_enabled", event.target.checked));
     document.querySelector("#muted").addEventListener("change", (event) => updateSetting("muted", event.target.checked));
+    document.querySelector("#lock-tempo").addEventListener("change", (event) => updateSetting("lock_tempo", event.target.checked));
     const rangeTimers = new Map();
     for (const [id, setting] of [["intensity", "intensity"], ["master-level", "master_level"]]) {
       const range = document.querySelector(`#${id}`);

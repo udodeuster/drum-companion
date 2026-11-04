@@ -226,10 +226,59 @@ class TestDrumCompanionScaffold(unittest.TestCase):
             follower.update(AudioAnalysisObservation(t, (t,), 160.0, 0.9, 0.5, 0.9))
             for t in (2.0, 4.0, 6.0, 8.0, 10.0)
         ]
-        shifted = follower.update(AudioAnalysisObservation(11.0, (11.0,), 100.0, 0.9, 0.5, 0.9))
+        for t in (11.0, 14.0, 17.0, 20.0):
+            shifted = follower.update(AudioAnalysisObservation(t, (t,), 100.0, 0.9, 0.5, 0.9))
 
         self.assertTrue(all(d.tempo_bpm == 80.0 for d in decisions))
         self.assertEqual(shifted.tempo_bpm, 100.0)
+
+    def test_groove_follower_holds_first_tempo_against_glitches_and_wander(self):
+        follower = GrooveFollower(style="rock", feel="tight", intensity=0.8)
+        follower.update(AudioAnalysisObservation(1.0, (1.0,), 100.0, 0.9, 0.5, 0.9))
+        glitch = follower.update(AudioAnalysisObservation(1.5, (1.5,), 130.0, 0.9, 0.5, 0.9))
+        back = follower.update(AudioAnalysisObservation(2.0, (2.0,), 100.0, 0.9, 0.5, 0.9))
+        wander = follower.update(AudioAnalysisObservation(2.5, (2.5,), 104.0, 0.9, 0.5, 0.9))
+
+        self.assertEqual(glitch.tempo_bpm, 100.0)
+        self.assertEqual(back.tempo_bpm, 100.0)
+        self.assertEqual(wander.tempo_bpm, 100.0)
+
+    def test_groove_follower_accepts_sustained_tempo_change_unless_locked(self):
+        for lock_tempo, expected in ((False, 130.0), (True, 100.0)):
+            with self.subTest(lock_tempo=lock_tempo):
+                follower = GrooveFollower(
+                    style="rock", feel="tight", intensity=0.8, lock_tempo=lock_tempo
+                )
+                follower.update(AudioAnalysisObservation(1.0, (1.0,), 100.0, 0.9, 0.5, 0.9))
+                for t in (2.0, 4.0, 6.0, 8.0, 10.0, 12.0):
+                    decision = follower.update(
+                        AudioAnalysisObservation(t, (t,), 130.0, 0.9, 0.5, 0.9)
+                    )
+                self.assertEqual(decision.tempo_bpm, expected)
+
+    def test_groove_follower_lock_tempo_survives_pause(self):
+        follower = GrooveFollower(style="rock", feel="tight", intensity=0.8, lock_tempo=True)
+        follower.update(AudioAnalysisObservation(1.0, (1.0,), 100.0, 0.9, 0.5, 0.9))
+        follower.update(AudioAnalysisObservation(2.0, (), None, 0.0, 0.0, 0.0, signal_active=False))
+        resumed = follower.update(AudioAnalysisObservation(20.0, (20.0,), 130.0, 0.9, 0.5, 0.9))
+
+        self.assertEqual(resumed.tempo_bpm, 100.0)
+
+    def test_groove_follower_fades_then_reduces_to_kick_during_pause(self):
+        follower = GrooveFollower(style="rock", feel="tight", intensity=0.8)
+        playing = follower.update(AudioAnalysisObservation(1.0, (1.0,), 120.0, 0.9, 0.5, 0.9))
+        early = follower.update(AudioAnalysisObservation(1.5, (), None, 0.0, 0.0, 0.0, signal_active=False))
+        faded = follower.update(AudioAnalysisObservation(4.0, (), None, 0.0, 0.0, 0.0, signal_active=False))
+        reduced = follower.update(AudioAnalysisObservation(14.0, (), None, 0.0, 0.0, 0.0, signal_active=False))
+        resumed = follower.update(AudioAnalysisObservation(15.0, (15.0,), 120.0, 0.9, 0.5, 0.9))
+
+        self.assertEqual(early.effective_intensity, playing.effective_intensity)
+        self.assertAlmostEqual(faded.effective_intensity, playing.effective_intensity * 0.4)
+        self.assertFalse(faded.kick_only)
+        self.assertTrue(reduced.kick_only)
+        self.assertTrue(set("".join(reduced.pattern)) <= {"K", "-"})
+        self.assertFalse(resumed.kick_only)
+        self.assertEqual(resumed.effective_intensity, playing.effective_intensity)
 
     def test_groove_follower_holds_tempo_after_no_onset_timeout(self):
         follower = GrooveFollower(

@@ -43,6 +43,7 @@ class LiveSettings:
     min_tempo_bpm: int = 40
     max_tempo_bpm: int = 140
     muted: bool = False
+    lock_tempo: bool = False
 
 
 class LiveAudioController:
@@ -433,6 +434,7 @@ class LiveAudioController:
                 phrase=settings.phrase,
                 onset_timeout_bars=settings.onset_timeout_bars,
                 lock_pulse_octave=settings.drums_enabled,
+                lock_tempo=settings.lock_tempo,
             )
             with self._lock:
                 self._state = "running"
@@ -449,6 +451,7 @@ class LiveAudioController:
                 follower.intensity = settings.intensity
                 follower.phrase = settings.phrase
                 follower.onset_timeout_bars = settings.onset_timeout_bars
+                follower.lock_tempo = settings.lock_tempo
                 if output is not None:
                     output.set_master_level(settings.master_level)
                     output.set_muted(settings.muted)
@@ -540,7 +543,7 @@ class LiveAudioController:
             except ValueError as exc:
                 raise ValueError("selected_groove_id must be a canonical UUID string or null") from exc
             return value
-        if name in {"drums_enabled", "muted"}:
+        if name in {"drums_enabled", "muted", "lock_tempo"}:
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be a boolean")
             return value

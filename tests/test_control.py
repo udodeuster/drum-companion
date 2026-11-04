@@ -191,6 +191,81 @@ class TestLiveAudioController(unittest.TestCase):
             with self.assertRaises(ValueError):
                 controller.delete_saved_groove(None)
 
+    def test_saving_selected_groove_is_allowed_during_live_playback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            library = GrooveLibrary(f"{directory}\\grooves.json")
+            controller = LiveAudioController(
+                capture_factory=IdleCapture,
+                output_factory=FakeOutput,
+                groove_library=library,
+            )
+            groove = controller.save_saved_groove(
+                {"name": "Active", **self.preview_draft()}
+            )
+            controller.update_settings({"selected_groove_id": groove["id"]})
+            controller.start()
+            try:
+                self.wait_for_state(controller, "running")
+                tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+                tracks["snare"][4] = True
+                updated = controller.save_saved_groove(
+                    {
+                        "id": groove["id"],
+                        "name": groove["name"],
+                        "tracks": tracks,
+                        "levels": groove["levels"],
+                    }
+                )
+
+                self.assertEqual(updated["tracks"]["snare"][4], True)
+                self.assertEqual(controller.snapshot()["state"], "running")
+                self.assertEqual(
+                    controller.snapshot()["settings"]["selected_groove_id"],
+                    groove["id"],
+                )
+                self.assertEqual(library.get_groove(groove["id"]).tracks["snare"][4], True)
+            finally:
+                controller.stop()
+
+    def test_saving_non_selected_groove_does_not_change_live_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            library = GrooveLibrary(f"{directory}\\grooves.json")
+            controller = LiveAudioController(
+                capture_factory=IdleCapture,
+                output_factory=FakeOutput,
+                groove_library=library,
+            )
+            active = controller.save_saved_groove(
+                {"name": "Active", **self.preview_draft()}
+            )
+            other = controller.save_saved_groove(
+                {"name": "Other", **self.preview_draft("snare")}
+            )
+            controller.update_settings({"selected_groove_id": active["id"]})
+            controller.start()
+            try:
+                self.wait_for_state(controller, "running")
+                tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+                tracks["ride"][8] = True
+                updated = controller.save_saved_groove(
+                    {
+                        "id": other["id"],
+                        "name": other["name"],
+                        "tracks": tracks,
+                        "levels": other["levels"],
+                    }
+                )
+
+                self.assertTrue(updated["tracks"]["ride"][8])
+                self.assertEqual(controller.snapshot()["state"], "running")
+                self.assertEqual(
+                    controller.snapshot()["settings"]["selected_groove_id"],
+                    active["id"],
+                )
+                self.assertEqual(library.get_groove(active["id"]), SavedGroove(**active))
+            finally:
+                controller.stop()
+
     def test_tempo_range_settings_are_validated_together(self):
         controller = LiveAudioController()
 
