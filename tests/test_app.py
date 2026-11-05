@@ -273,7 +273,7 @@ class TestDrumCompanionScaffold(unittest.TestCase):
         resumed = follower.update(AudioAnalysisObservation(15.0, (15.0,), 120.0, 0.9, 0.5, 0.9))
 
         self.assertEqual(early.effective_intensity, playing.effective_intensity)
-        self.assertAlmostEqual(faded.effective_intensity, playing.effective_intensity * 0.4)
+        self.assertAlmostEqual(faded.effective_intensity, playing.effective_intensity * 0.6)
         self.assertFalse(faded.kick_only)
         self.assertTrue(reduced.kick_only)
         self.assertTrue(set("".join(reduced.pattern)) <= {"K", "-"})

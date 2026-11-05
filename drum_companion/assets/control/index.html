@@ -100,7 +100,7 @@
     </header>
     <dialog id="welcome-dialog" aria-labelledby="intro-heading">
       <h2 id="intro-heading">Welcome to Drum Companion</h2>
-      <p class="intro-copy">Drum Companion listens to your live performance and follows its tempo while adding a drum groove. Choose Auto accompaniment or create and select your own named grooves.</p>
+      <p class="intro-copy">Drum Companion listens to your live performance and follows its tempo while adding a drum groove. Choose Rock, Folk, or Indie automatic accompaniment, or create and select your own named grooves.</p>
       <p class="intro-copy">On this computer, open the panel directly—no PIN is needed. From a phone, open the same page over your private Wi-Fi and enter the one-time PIN shown on the computer. Use Start and Stop for live control; the groove editor also offers a preview through the computer's audio output.</p>
       <p class="intro-copy">Access is limited to your private network. Use a trusted Wi-Fi network, allow the app through the firewall only on private networks, and do not expose or forward this panel to the public internet.</p>
       <div class="welcome-actions"><button id="close-welcome" type="button">Continue</button></div>
@@ -168,8 +168,7 @@
       <section aria-labelledby="groove-heading">
         <h2 id="groove-heading">Groove</h2>
         <div class="settings-grid">
-          <div><label for="groove-select">Playback groove</label><select id="groove-select"><option value="">Auto</option></select></div>
-          <div><label for="style">Style</label><select id="style"><option>rock</option><option>folk</option><option>indie</option></select></div>
+          <div><label for="groove-select">Playback groove</label><select id="groove-select"><option value="rock">Rock</option><option value="folk">Folk</option><option value="indie">Indie</option></select></div>
           <div><label for="feel">Feel</label><select id="feel"><option>tight</option><option>relaxed</option></select></div>
           <div>
             <div class="range-heading"><label for="intensity">Intensity</label><output id="intensity-value">0.80</output></div>
@@ -190,8 +189,6 @@
             <input id="max-tempo" type="range" min="60" max="300" step="1" value="140">
           </div>
         </div>
-        <p class="hint">Tight keeps eighths straight; relaxed uses 55% swing with quiet rock/folk ghost snares. Intensity shapes strength and extra accents; core kick and backbeat remain above zero. Changes affect future bars only.</p>
-        <p class="hint">Tempo holds through half/double-time ambiguity until three reliable estimates agree. Once started, the groove and tempo keep playing until you stop.</p>
         <div id="groove-editor-panel" aria-labelledby="groove-editor-heading">
         <h2 id="groove-editor-heading">Drum tracks</h2>
         <div class="editor-toolbar">
@@ -200,8 +197,6 @@
             <input id="editor-name" type="text" maxlength="64" autocomplete="off">
           </div>
         </div>
-        <p class="hint">Tap a step to toggle it. Each instrument level controls its track; Intensity scales all tracks together.</p>
-        <p class="hint">Track edits apply to live playback on future bars, but remain unsaved until you save them. Auto edits apply as a temporary snapshot.</p>
         <div class="preview-controls">
           <div class="preview-tempo">
             <label for="preview-tempo">Preview BPM</label>
@@ -211,7 +206,6 @@
           <button id="preview-stop" type="button" class="secondary" disabled>Stop preview</button>
           <p id="preview-status" class="preview-status" role="status">Preview plays through the host audio output.</p>
         </div>
-        <p class="hint">Preview loops the unsaved draft through this computer's audio output. Stop the live session before starting a preview; edits take effect on the next bar and are not saved.</p>
         <div id="step-grid-rows"></div>
         <p id="editor-status" class="editor-status" role="status">Edit the current groove's drum tracks.</p>
         <div class="transport">
@@ -219,7 +213,6 @@
           <button id="save-groove" type="button" disabled>Save as new groove</button>
           <button id="delete-groove" type="button" class="secondary" disabled>Delete groove</button>
         </div>
-        <p class="hint">Choose a saved groove above to edit it, or edit the current Auto snapshot. Saving options let you update a saved groove or create a named copy. Deleting asks for confirmation and switches back to Auto if the groove was selected.</p>
         </div>
       </section>
     </div>
@@ -249,6 +242,8 @@
       cowbell: "Cowbell"
     };
     const autoTokens = { O: "open_hat", C: "cymbal", R: "rimshot", P: "clap", t: "tom_high", T: "tom_low", D: "ride", X: "shaker", B: "cowbell" };
+    const autoStyles = ["rock", "folk", "indie"];
+    const isAutoStyle = (value) => autoStyles.includes(value);
     let savedGrooves = [];
     const visibleTracksKey = "drum-companion-visible-tracks";
     const loadVisibleTracks = () => {
@@ -330,9 +325,9 @@
     };
     const setGrooveOptions = (settings) => {
       const select = document.querySelector("#groove-select");
-      select.replaceChildren(new Option("Auto", ""));
+      select.replaceChildren(...autoStyles.map((style) => new Option(style[0].toUpperCase() + style.slice(1), style)));
       savedGrooves.forEach((groove) => select.add(new Option(groove.name, groove.id)));
-      if (document.activeElement !== select) select.value = settings.selected_groove_id || "";
+      if (document.activeElement !== select) select.value = settings.selected_groove_id || settings.style || "rock";
     };
     const loadGrooves = async (settings = latestStatus?.settings || {}) => {
       savedGrooves = (await api("/api/grooves")).grooves;
@@ -469,7 +464,7 @@
           : "Preview plays through the host audio output.";
       const settings = status.settings;
       const grooveSelect = document.querySelector("#groove-select");
-      if (document.activeElement !== grooveSelect) grooveSelect.value = settings.selected_groove_id || "";
+      if (document.activeElement !== grooveSelect) grooveSelect.value = settings.selected_groove_id || settings.style || "rock";
       if (!settings.selected_groove_id && !editorDirty && status.pattern.length) {
         const patternKey = status.pattern.join("|");
         if (patternKey !== editorAutoPatternKey) {
@@ -477,7 +472,7 @@
           setEditorDraft(autoPatternToDraft(status.pattern), false);
         }
       }
-      for (const name of ["style", "feel"]) document.querySelector(`#${name}`).value = settings[name];
+      document.querySelector("#feel").value = settings.feel;
       for (const name of ["muted", "drums-enabled", "lock-tempo"]) {
         const key = name.replace("-", "_");
         document.querySelector(`#${name}`).checked = settings[key];
@@ -633,18 +628,22 @@
     }));
     document.querySelector("#groove-select").addEventListener("change", (event) => withMessage(async () => {
       const select = event.target;
-      const previousGrooveId = latestStatus?.settings?.selected_groove_id || "";
-      const grooveId = event.target.value || null;
+      const previousSelection = latestStatus?.settings?.selected_groove_id || latestStatus?.settings?.style || "rock";
+      const selection = select.value;
+      const autoStyle = isAutoStyle(selection) ? selection : null;
+      const grooveId = autoStyle ? null : selection;
       if (editorDirty && !window.confirm("Discard unsaved groove changes?")) {
-        select.value = previousGrooveId;
+        select.value = previousSelection;
         return;
       }
       await settleLiveDraftUpdates();
       const draft = await selectedGrooveDraft(grooveId);
       try {
+        const settingsPatch = { selected_groove_id: grooveId };
+        if (autoStyle) settingsPatch.style = autoStyle;
         const result = await api("/api/settings", {
           method: "PATCH",
-          body: JSON.stringify({ selected_groove_id: grooveId })
+          body: JSON.stringify(settingsPatch)
         });
         latestStatus = {
           ...latestStatus,
@@ -652,7 +651,7 @@
         };
         setEditorDraft(draft, false);
       } catch (error) {
-        select.value = previousGrooveId;
+        select.value = previousSelection;
         throw error;
       }
       queuePreviewUpdate();
@@ -693,7 +692,7 @@
       if (!editorDraft) throw new Error("Select a groove before saving.");
       const name = editorDraft.name.trim();
       if (!name) throw new Error("Enter a groove name before saving.");
-      if (!saveAs && !editorDraft.id) throw new Error("Auto snapshots can only be saved as a new groove.");
+      if (!saveAs && !editorDraft.id) throw new Error("Automatic-groove snapshots can only be saved as a new groove.");
       await settleLiveDraftUpdates();
       const payload = {
         name,
@@ -736,9 +735,7 @@
       queuePreviewUpdate();
       await refreshStatus();
     }));
-    for (const name of ["style", "feel"]) {
-      document.querySelector(`#${name}`).addEventListener("change", (event) => updateSetting(name, event.target.value));
-    }
+    document.querySelector("#feel").addEventListener("change", (event) => updateSetting("feel", event.target.value));
     for (const [id, setting] of [["input-device", "input_device"], ["output-device", "output_device"]]) {
       document.querySelector(`#${id}`).addEventListener("change", (event) => {
         updateSetting(setting, event.target.value === "" ? null : Number(event.target.value));

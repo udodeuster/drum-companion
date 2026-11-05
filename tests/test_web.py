@@ -156,19 +156,31 @@ class TestControlWebServer(unittest.TestCase):
         parser.feed(page.decode("utf-8"))
 
         self.assertEqual(len(parser.ids), len(set(parser.ids)))
-        self.assertIn(b"55% swing", page)
-        self.assertIn(b"core kick and backbeat remain above zero", page)
-        self.assertIn(b"three reliable estimates agree", page)
+        self.assertIn(
+            b'<label for="groove-select">Playback groove</label><select id="groove-select"><option value="rock">Rock</option><option value="folk">Folk</option><option value="indie">Indie</option></select>',
+            page,
+        )
+        self.assertNotIn(b'id="style"', page)
+        self.assertIn(b"const autoStyles = [\"rock\", \"folk\", \"indie\"];", page)
+        self.assertIn(b"settings.selected_groove_id || settings.style || \"rock\"", page)
+        self.assertIn(b"if (autoStyle) settingsPatch.style = autoStyle;", page)
+        self.assertNotIn(b"55% swing", page)
+        self.assertNotIn(b"core kick and backbeat remain above zero", page)
+        self.assertNotIn(b"three reliable estimates agree", page)
         self.assertIn(b"repeat(16, minmax(30px, 1fr))", page)
         self.assertIn(b"step < 16", page)
         groove_section_start = page.index(b'<section aria-labelledby="groove-heading">')
         groove_section_end = page.index(b"</section>", groove_section_start)
+        groove_section = page[groove_section_start:groove_section_end]
+        self.assertNotIn(b'class="hint"', groove_section)
         self.assertLess(groove_section_start, page.index(b'id="step-grid-rows"'))
         self.assertLess(page.index(b'id="step-grid-rows"'), groove_section_end)
         self.assertNotIn(b'id="open-groove-editor"', page)
         self.assertNotIn(b'id="editor-target"', page)
-        self.assertIn(b"Choose a saved groove above to edit it, or edit the current Auto snapshot.", page)
-        self.assertIn(b"Track edits apply to live playback on future bars, but remain unsaved until you save them.", page)
+        self.assertNotIn(b"Tap a step to toggle it.", page)
+        self.assertNotIn(b"Track edits apply to live playback", page)
+        self.assertNotIn(b"Preview loops the unsaved draft", page)
+        self.assertNotIn(b"Choose a saved groove above to edit it", page)
         self.assertIn(b"const loadSelectedGrooveDraft = async (grooveId)", page)
         self.assertIn(b"return groove;", page)
         self.assertIn(b"setEditorDraft(await selectedGrooveDraft(grooveId), false);", page)
@@ -176,14 +188,14 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b"await loadSelectedGrooveDraft(status.settings.selected_groove_id);", page)
         self.assertIn(b"if (!settings.selected_groove_id && !editorDirty && status.pattern.length)", page)
         self.assertIn(b'if (editorDirty && !window.confirm("Discard unsaved groove changes?"))', page)
-        self.assertIn(b"select.value = previousGrooveId;", page)
+        self.assertIn(b"select.value = previousSelection;", page)
         self.assertIn(b"const draft = await selectedGrooveDraft(grooveId);", page)
         self.assertIn(b"...result.settings", page)
         self.assertIn(b'document.querySelector("#update-groove").addEventListener("click", () => saveDraft(false))', page)
         self.assertIn(b'document.querySelector("#save-groove").addEventListener("click", () => saveDraft(true))', page)
         self.assertIn(b"if (!saveAs) payload.id = editorDraft.id;", page)
         self.assertIn(b"Enter a groove name before saving.", page)
-        self.assertIn(b"Auto snapshots can only be saved as a new groove.", page)
+        self.assertIn(b"Automatic-groove snapshots can only be saved as a new groove.", page)
         self.assertIn(b'api("/api/live-groove-draft"', page)
         self.assertIn(b"queueLiveDraftUpdate();", page)
         self.assertIn(b"catch (error) { showMessage(error.message);", page)
@@ -199,19 +211,19 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b'preview-status").textContent = error.message', page)
         self.assertIn(b"Preview BPM must be between 30 and 300.", page)
         self.assertNotIn(b'id="phrase"', page)
+        self.assertNotIn(b'id="style"', page)
         self.assertNotIn(b'id="onset-timeout-bars"', page)
         self.assertTrue(
             {
                 "start", "stop", "tempo", "signal", "confidence", "energy", "pattern",
-                "input-device", "output-device", "drums-enabled", "style",                 "feel",
-                                "intensity", "master-level", "muted", "lock-tempo", "pairing-qr",
+                "input-device", "output-device", "drums-enabled", "feel",
+                "intensity", "master-level", "muted", "lock-tempo", "pairing-qr",
                 "display-pin", "phone-link",
                 "groove-select", "groove-editor-panel",
                 "editor-name", "step-grid-rows", "update-groove", "save-groove", "delete-groove", "editor-status",
                 "preview-tempo", "preview-start", "preview-stop", "preview-status",
             }.issubset(parser.ids)
         )
-        self.assertIn(b"Preview loops the unsaved draft", page)
         self.assertIn(b"Preview on host", page)
 
     def test_host_pairing_details_include_fragment_pin_and_svg_qr(self):
