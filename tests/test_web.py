@@ -146,6 +146,9 @@ class TestControlWebServer(unittest.TestCase):
             self.assertIn(f'id="{control}"', dialog)
         self.assertEqual(text.count('id="input-device"'), 1)
         self.assertIn("Close Settings and press Stop", dialog)
+        self.assertIn('id="pairing-qr"', dialog)
+        self.assertIn('id="visible-tracks"', dialog)
+        self.assertIn('id="phone-link"', dialog)
 
     def test_control_page_contains_unique_ids_for_live_controls(self):
         _, _, page = self.request("/")

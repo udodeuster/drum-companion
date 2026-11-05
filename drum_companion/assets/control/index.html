@@ -112,14 +112,6 @@
       <input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
       <button id="pair">Pair</button>
       <p id="pair-message" class="message" role="status"></p>
-      <div id="pairing-details" class="pairing-details" hidden>
-        <img id="pairing-qr" alt="QR code with the phone control link and one-time pairing PIN">
-        <div>
-          <span>One-time PIN</span>
-          <strong id="display-pin"></strong>
-          <a id="phone-link"></a>
-        </div>
-      </div>
     </section>
     <div id="session-panel" hidden>
       <div class="transport">
@@ -154,6 +146,23 @@
           </div>
           <p class="hint">Device and playback-mode changes require stopping the session first.</p>
           <p id="settings-running-hint" class="hint running-hint" hidden>The session is running. Close Settings and press Stop before changing devices or playback mode.</p>
+        </section>
+        <section aria-labelledby="visible-tracks-heading">
+          <h2 id="visible-tracks-heading">Drum tracks shown in editor</h2>
+          <div id="visible-tracks" class="settings-grid"></div>
+          <p class="hint">Hidden tracks keep their steps and still play; they are only removed from the editor on this device. At least one track stays visible.</p>
+        </section>
+        <section id="phone-connect" aria-labelledby="phone-heading" hidden>
+          <h2 id="phone-heading">Connect a phone</h2>
+          <div id="pairing-details" class="pairing-details" hidden>
+            <img id="pairing-qr" alt="QR code with the phone control link and one-time pairing PIN">
+            <div>
+              <span>One-time PIN</span>
+              <strong id="display-pin"></strong>
+              <a id="phone-link"></a>
+            </div>
+          </div>
+          <p class="hint">Scan the code on a phone connected to the same private Wi-Fi, or open the link and enter the PIN.</p>
         </section>
       </dialog>
       <section aria-labelledby="groove-heading">
@@ -241,6 +250,40 @@
     };
     const autoTokens = { O: "open_hat", C: "cymbal", R: "rimshot", P: "clap", t: "tom_high", T: "tom_low", D: "ride", X: "shaker", B: "cowbell" };
     let savedGrooves = [];
+    const visibleTracksKey = "drum-companion-visible-tracks";
+    const loadVisibleTracks = () => {
+      try {
+        const stored = JSON.parse(localStorage.getItem(visibleTracksKey));
+        const valid = Array.isArray(stored) ? instruments.filter((instrument) => stored.includes(instrument)) : [];
+        return new Set(valid.length ? valid : instruments);
+      } catch (error) {
+        return new Set(instruments);
+      }
+    };
+    let visibleTracks = loadVisibleTracks();
+    const renderVisibleTrackOptions = () => {
+      const container = document.querySelector("#visible-tracks");
+      container.replaceChildren();
+      for (const instrument of instruments) {
+        const label = document.createElement("label");
+        label.className = "toggle";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = visibleTracks.has(instrument);
+        box.disabled = box.checked && visibleTracks.size === 1;
+        box.dataset.visibleTrack = instrument;
+        label.append(box, ` ${instrumentNames[instrument]}`);
+        container.append(label);
+      }
+    };
+    const toggleVisibleTrack = (instrument, visible) => {
+      if (visible) visibleTracks.add(instrument);
+      else if (visibleTracks.size > 1) visibleTracks.delete(instrument);
+      try { localStorage.setItem(visibleTracksKey, JSON.stringify([...visibleTracks])); } catch (error) {}
+      renderVisibleTrackOptions();
+      document.querySelector(`[data-visible-track="${instrument}"]`)?.focus();
+      renderStepGrid();
+    };
     let editorDraft = null;
     let editorDirty = false;
     let editorAutoPatternKey = "";
@@ -329,6 +372,7 @@
       rows.replaceChildren();
       if (!editorDraft) return;
       for (const instrument of instruments) {
+        if (!visibleTracks.has(instrument)) continue;
         const row = document.createElement("div");
         row.className = "editor-track";
         const heading = document.createElement("div");
@@ -770,8 +814,14 @@
         }
       }
     };
+    document.querySelector("#visible-tracks").addEventListener("change", (event) => {
+      const box = event.target.closest("[data-visible-track]");
+      if (box) toggleVisibleTrack(box.dataset.visibleTrack, box.checked);
+    });
+    renderVisibleTrackOptions();
     document.querySelector("#open-settings").addEventListener("click", () => {
       document.querySelector("#settings-dialog").showModal();
+      loadPairingDetails();
     });
     document.querySelector("#close-settings").addEventListener("click", () => {
       document.querySelector("#settings-dialog").close();
@@ -791,8 +841,9 @@
         const link = document.querySelector("#phone-link");
         link.href = details.url;
         link.textContent = details.url;
-        document.querySelector("#pairing-qr").src = "/api/pairing-qr.svg";
+        document.querySelector("#pairing-qr").src = `/api/pairing-qr.svg?t=${Date.now()}`;
         document.querySelector("#pairing-details").hidden = false;
+        document.querySelector("#phone-connect").hidden = false;
       } catch (error) {}
     };
     loadPairingDetails();
