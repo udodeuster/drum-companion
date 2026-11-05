@@ -73,6 +73,8 @@ class LiveAudioController:
         self._stop_event = Event()
         self._capture: MicrophoneCapture | None = None
         self._output: SampleOutput | None = None
+        self._live_groove_draft: SavedGroove | None = None
+        self._live_groove_draft_target: str | None = None
         self._last_detected_tempo_bpm: float | None = None
         self._preview_state = "stopped"
         self._preview_error: str | None = None
@@ -197,6 +199,9 @@ class LiveAudioController:
                 raise DeviceRestartRequired("Stop the live session before changing audio devices or drum playback")
             candidate = replace(self._settings, **normalized)
             self._validate_settings(candidate)
+            if candidate.selected_groove_id != self._settings.selected_groove_id:
+                self._live_groove_draft = None
+                self._live_groove_draft_target = None
             self._settings = candidate
             output = self._output
             preview_output = self._preview_output
@@ -213,6 +218,34 @@ class LiveAudioController:
             if "muted" in normalized:
                 preview_output.set_muted(settings.muted)
         return asdict(settings)
+
+    def update_live_groove_draft(self, values: Mapping[str, object]) -> None:
+        if set(values) != {"selected_groove_id", "tracks", "levels"}:
+            raise ValueError("A live groove draft must contain selected_groove_id, tracks, and levels")
+        target = self._normalize_setting("selected_groove_id", values["selected_groove_id"])
+        if not isinstance(values["tracks"], Mapping) or not isinstance(values["levels"], Mapping):
+            raise ValueError("Groove tracks and levels must be objects")
+        draft = SavedGroove.create("Live edit", values["tracks"], values["levels"])
+        with self._lock:
+            if target != self._settings.selected_groove_id:
+                raise LiveControlError("The selected groove changed before its edit was applied")
+            self._live_groove_draft = draft
+            self._live_groove_draft_target = target
+
+    def _groove_for_playback(self, settings: LiveSettings) -> SavedGroove | None:
+        with self._lock:
+            if self._live_groove_draft_target == settings.selected_groove_id:
+                draft = self._live_groove_draft
+            else:
+                draft = None
+        if draft is not None:
+            return draft
+        if settings.selected_groove_id is None:
+            return None
+        groove = self._groove_library.get_groove(settings.selected_groove_id)
+        if groove is None:
+            raise LiveControlError("The selected saved groove no longer exists")
+        return groove
 
     def snapshot(self) -> dict[str, object]:
         with self._lock:
@@ -473,13 +506,7 @@ class LiveAudioController:
                     if decision.tempo_bpm is not None:
                         self._last_detected_tempo_bpm = decision.tempo_bpm
                 if coordinator is not None:
-                    selected_groove = (
-                        self._groove_library.get_groove(settings.selected_groove_id)
-                        if settings.selected_groove_id is not None
-                        else None
-                    )
-                    if settings.selected_groove_id is not None and selected_groove is None:
-                        raise LiveControlError("The selected saved groove no longer exists")
+                    selected_groove = self._groove_for_playback(settings)
                     coordinator.update(decision, selected_groove)
                 with self._lock:
                     self._status = {

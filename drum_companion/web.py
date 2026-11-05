@@ -160,7 +160,7 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self._send_json(403, {"error": "Only private-network clients are allowed"})
             return
         path = urlsplit(self.path).path
-        if path not in {"/api/settings", "/api/preview"}:
+        if path not in {"/api/settings", "/api/preview", "/api/live-groove-draft"}:
             self._discard_request_body()
             self.close_connection = True
             self._send_json(404, {"error": "Not found"})
@@ -178,6 +178,9 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         try:
             if path == "/api/preview":
                 self._send_json(200, self.server.controller.update_preview(payload))
+            elif path == "/api/live-groove-draft":
+                self.server.controller.update_live_groove_draft(payload)
+                self._send_json(200, {"updated": True})
             else:
                 settings = self.server.controller.update_settings(payload)
                 self._send_json(200, {"settings": settings})
