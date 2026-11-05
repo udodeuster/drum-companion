@@ -135,6 +135,7 @@ class TestLiveAudioController(unittest.TestCase):
         controller = LiveAudioController()
 
         self.assertEqual(controller.settings.onset_timeout_bars, 1)
+        self.assertTrue(controller.settings.lock_tempo)
         for timeout in (0, 1, 2, 4):
             updated = controller.update_settings({"onset_timeout_bars": timeout})
             self.assertEqual(updated["onset_timeout_bars"], timeout)

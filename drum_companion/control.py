@@ -43,7 +43,7 @@ class LiveSettings:
     min_tempo_bpm: int = 40
     max_tempo_bpm: int = 140
     muted: bool = False
-    lock_tempo: bool = False
+    lock_tempo: bool = True
 
 
 class LiveAudioController:
