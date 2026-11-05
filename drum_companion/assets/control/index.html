@@ -55,7 +55,7 @@
     .pairing-details a { overflow-wrap: anywhere; color: #a13b27; }
     #groove-editor-panel { padding: 10px 12px; }
     #groove-editor-panel h2 { margin-bottom: 6px; }
-    .editor-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 6px; }
+    .editor-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); align-items: end; gap: 6px; }
     .editor-toolbar select, .editor-toolbar input[type="text"], .preview-tempo input { min-height: 30px; }
     #groove-editor-panel button { min-height: 30px; padding: 0 12px; }
     .preview-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 6px; margin-top: 7px; }
@@ -70,6 +70,13 @@
     button.step-cell { min-height: 30px; padding: 0; border: 1px solid #aab8af; background: #fff; color: #19302d; font-size: 11px; }
     button.step-cell[aria-pressed="true"] { border-color: #a33c28; background: #d65a3c; color: #fff; }
     .editor-status { min-height: 1.2em; margin: 8px 0 0; color: #52655d; font-size: 12px; }
+    #settings-dialog { width: min(560px, calc(100% - 28px)); max-height: min(80vh, 640px); padding: 16px; overflow-y: auto; border: 1px solid #d4ddd6; border-radius: 8px; color: #182b2a; }
+    #settings-dialog::backdrop { background: #10201dcc; }
+    #settings-dialog section { margin-top: 8px; padding: 0; border: 0; }
+    .dialog-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .dialog-heading h2 { margin: 0; font-size: 17px; }
+    .icon-button { min-width: 36px; padding: 0 10px; font-size: 18px; line-height: 1; }
+    .running-hint { color: #a13b27; font-weight: 700; }
     [hidden] { display: none !important; }
     @media (max-width: 600px) {
       main { padding: 8px 8px 20px; }
@@ -77,7 +84,7 @@
       section { padding: 10px 12px; }
       .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .editor-toolbar { grid-template-columns: 1fr 1fr; }
+      .editor-toolbar { grid-template-columns: 1fr; }
       .editor-toolbar button { grid-column: 1 / -1; }
       .transport button { flex: 1; }
       .pairing-details { grid-template-columns: 120px minmax(0, 1fr); gap: 12px; }
@@ -119,6 +126,7 @@
         <button id="start">Start</button>
         <button id="stop" class="secondary">Stop</button>
         <button id="quit-app" class="secondary" type="button">Quit app</button>
+        <button id="open-settings" class="secondary icon-button" type="button" aria-label="Settings" title="Settings">&#9881;</button>
         <span id="live-indicator" class="live-indicator" data-state="stopped">Stopped</span>
       </div>
       <p id="control-message" class="message" role="status"></p>
@@ -132,15 +140,22 @@
         </div>
         <p id="pattern" class="pattern">Waiting for live analysis</p>
       </section>
-      <section aria-labelledby="device-heading">
-        <h2 id="device-heading">Audio devices</h2>
-        <div class="settings-grid">
-          <div><label for="input-device">Microphone input</label><select id="input-device"></select></div>
-          <div><label for="output-device">Drum output</label><select id="output-device"></select></div>
-          <label class="toggle"><input id="drums-enabled" type="checkbox"> Enable drum playback</label>
+      <dialog id="settings-dialog" aria-labelledby="settings-heading">
+        <div class="dialog-heading">
+          <h2 id="settings-heading">Settings</h2>
+          <button id="close-settings" type="button" class="secondary">Close</button>
         </div>
-        <p class="hint">Device and playback-mode changes require stopping the session first.</p>
-      </section>
+        <section aria-labelledby="device-heading">
+          <h2 id="device-heading">Audio devices</h2>
+          <div class="settings-grid">
+            <div><label for="input-device">Microphone input</label><select id="input-device"></select></div>
+            <div><label for="output-device">Drum output</label><select id="output-device"></select></div>
+            <label class="toggle"><input id="drums-enabled" type="checkbox"> Enable drum playback</label>
+          </div>
+          <p class="hint">Device and playback-mode changes require stopping the session first.</p>
+          <p id="settings-running-hint" class="hint running-hint" hidden>The session is running. Close Settings and press Stop before changing devices or playback mode.</p>
+        </section>
+      </dialog>
       <section aria-labelledby="groove-heading">
         <h2 id="groove-heading">Groove</h2>
         <div class="settings-grid">
@@ -165,28 +180,19 @@
             <div class="range-heading"><label for="max-tempo">Max BPM</label><output id="max-tempo-value">140</output></div>
             <input id="max-tempo" type="range" min="60" max="300" step="1" value="140">
           </div>
-          <div class="toggle"><button id="open-groove-editor" type="button" class="secondary">Edit grooves</button></div>
         </div>
         <p class="hint">Tight keeps eighths straight; relaxed uses 55% swing with quiet rock/folk ghost snares. Intensity shapes strength and extra accents; core kick and backbeat remain above zero. Changes affect future bars only.</p>
         <p class="hint">Tempo holds through half/double-time ambiguity until three reliable estimates agree. Once started, the groove and tempo keep playing until you stop.</p>
-      </section>
-      <section id="groove-editor-panel" aria-labelledby="groove-editor-heading" hidden>
-        <h2 id="groove-editor-heading">Groove editor</h2>
+        <div id="groove-editor-panel" aria-labelledby="groove-editor-heading">
+        <h2 id="groove-editor-heading">Drum tracks</h2>
         <div class="editor-toolbar">
-          <div>
-            <label for="editor-target">Create or edit</label>
-            <select id="editor-target">
-              <option value="blank">New blank groove</option>
-              <option value="copy-auto">Copy current Auto groove</option>
-            </select>
-          </div>
           <div>
             <label for="editor-name">Groove name</label>
             <input id="editor-name" type="text" maxlength="64" autocomplete="off">
           </div>
-          <button id="close-groove-editor" type="button" class="secondary">Close editor</button>
         </div>
         <p class="hint">Tap a step to toggle it. Each instrument level controls its track; Intensity scales all tracks together.</p>
+        <p class="hint">Track edits apply to live playback on future bars, but remain unsaved until you save them. Auto edits apply as a temporary snapshot.</p>
         <div class="preview-controls">
           <div class="preview-tempo">
             <label for="preview-tempo">Preview BPM</label>
@@ -198,12 +204,14 @@
         </div>
         <p class="hint">Preview loops the unsaved draft through this computer's audio output. Stop the live session before starting a preview; edits take effect on the next bar and are not saved.</p>
         <div id="step-grid-rows"></div>
-        <p id="editor-status" class="editor-status" role="status">Create a groove to begin editing.</p>
+        <p id="editor-status" class="editor-status" role="status">Edit the current groove's drum tracks.</p>
         <div class="transport">
-          <button id="save-groove" type="button" disabled>Save groove</button>
+          <button id="update-groove" type="button" disabled>Save changes</button>
+          <button id="save-groove" type="button" disabled>Save as new groove</button>
           <button id="delete-groove" type="button" class="secondary" disabled>Delete groove</button>
         </div>
-        <p class="hint">To rename a saved groove, choose it under "Create or edit", change the name and save. Deleting asks for confirmation and switches back to Auto if the groove was selected.</p>
+        <p class="hint">Choose a saved groove above to edit it, or edit the current Auto snapshot. Saving options let you update a saved groove or create a named copy. Deleting asks for confirmation and switches back to Auto if the groove was selected.</p>
+        </div>
       </section>
     </div>
   </main>
@@ -235,9 +243,11 @@
     let savedGrooves = [];
     let editorDraft = null;
     let editorDirty = false;
-    let editorTargetValue = "blank";
+    let editorAutoPatternKey = "";
     let latestStatus = null;
     let previewUpdateTimer = null;
+    let liveDraftUpdateTimer = null;
+    let liveDraftUpdateChain = Promise.resolve();
     const api = async (path, options = {}) => {
       const headers = { ...(options.headers || {}) };
       if (sessionToken && path !== "/api/pair") headers.Authorization = `Bearer ${sessionToken}`;
@@ -280,16 +290,6 @@
       select.replaceChildren(new Option("Auto", ""));
       savedGrooves.forEach((groove) => select.add(new Option(groove.name, groove.id)));
       if (document.activeElement !== select) select.value = settings.selected_groove_id || "";
-
-      const target = document.querySelector("#editor-target");
-      const previousTarget = target.value || editorTargetValue;
-      target.replaceChildren(
-        new Option("New blank groove", "blank"),
-        new Option("Copy current Auto groove", "copy-auto")
-      );
-      savedGrooves.forEach((groove) => target.add(new Option(`Edit: ${groove.name}`, groove.id)));
-      target.value = savedGrooves.some((groove) => groove.id === previousTarget) ? previousTarget : "blank";
-      if (target.value !== previousTarget) editorTargetValue = target.value;
     };
     const loadGrooves = async (settings = latestStatus?.settings || {}) => {
       savedGrooves = (await api("/api/grooves")).grooves;
@@ -314,9 +314,15 @@
       editorDirty = dirty;
       document.querySelector("#editor-name").value = editorDraft.name;
       document.querySelector("#save-groove").disabled = false;
+      document.querySelector("#update-groove").disabled = !editorDraft.id || !dirty;
       document.querySelector("#delete-groove").disabled = !editorDraft.id;
       setEditorStatus(dirty ? "Unsaved changes" : "Saved groove");
       renderStepGrid();
+    };
+    const markEditorDirty = () => {
+      editorDirty = true;
+      document.querySelector("#update-groove").disabled = !editorDraft?.id;
+      setEditorStatus("Unsaved changes");
     };
     const renderStepGrid = () => {
       const rows = document.querySelector("#step-grid-rows");
@@ -376,6 +382,23 @@
       }
       return draft;
     };
+    const selectedGrooveDraft = async (grooveId) => {
+      if (grooveId) {
+        const groove = savedGrooves.find((item) => item.id === grooveId);
+        if (!groove) throw new Error("The selected saved groove is no longer available.");
+        editorAutoPatternKey = "";
+        return groove;
+      }
+      const currentPattern = latestStatus?.pattern || [];
+      const pattern = currentPattern.length
+        ? currentPattern
+        : (await api("/api/grooves/auto")).pattern;
+      editorAutoPatternKey = pattern.join("|");
+      return autoPatternToDraft(pattern);
+    };
+    const loadSelectedGrooveDraft = async (grooveId) => {
+      setEditorDraft(await selectedGrooveDraft(grooveId), false);
+    };
     const paintStatus = (status) => {
       latestStatus = status;
       const indicator = document.querySelector("#live-indicator");
@@ -383,6 +406,7 @@
       indicator.textContent = status.state[0].toUpperCase() + status.state.slice(1);
       document.querySelector("#start").disabled = status.running;
       document.querySelector("#stop").disabled = !status.running;
+      document.querySelector("#settings-running-hint").hidden = !status.running;
       document.querySelector("#tempo").textContent = status.tempo_bpm == null ? "-- BPM" : `${status.tempo_bpm.toFixed(1)} BPM`;
       document.querySelector("#signal").textContent = status.signal_active ? "Active" : "No input";
       document.querySelector("#confidence").textContent = `${Math.round(status.tempo_confidence * 100)}%`;
@@ -402,6 +426,13 @@
       const settings = status.settings;
       const grooveSelect = document.querySelector("#groove-select");
       if (document.activeElement !== grooveSelect) grooveSelect.value = settings.selected_groove_id || "";
+      if (!settings.selected_groove_id && !editorDirty && status.pattern.length) {
+        const patternKey = status.pattern.join("|");
+        if (patternKey !== editorAutoPatternKey) {
+          editorAutoPatternKey = patternKey;
+          setEditorDraft(autoPatternToDraft(status.pattern), false);
+        }
+      }
       for (const name of ["style", "feel"]) document.querySelector(`#${name}`).value = settings[name];
       for (const name of ["muted", "drums-enabled", "lock-tempo"]) {
         const key = name.replace("-", "_");
@@ -467,25 +498,32 @@
         }
       }), 180);
     };
-    const loadEditorTarget = (value) => withMessage(async () => {
-      if (editorDirty && !window.confirm("Discard unsaved groove changes?")) {
-        document.querySelector("#editor-target").value = editorTargetValue;
-        return;
-      }
-      editorTargetValue = value;
-      if (value === "blank") {
-        setEditorDraft(blankGroove(), true);
-      } else if (value === "copy-auto") {
-        const currentPattern = latestStatus?.pattern || [];
-        const pattern = currentPattern.length ? currentPattern : (await api("/api/grooves/auto")).pattern;
-        setEditorDraft(autoPatternToDraft(pattern), true);
-      } else {
-        const groove = savedGrooves.find((item) => item.id === value);
-        if (!groove) throw new Error("The selected saved groove is no longer available.");
-        setEditorDraft(groove, false);
-      }
-      queuePreviewUpdate();
-    });
+    const settleLiveDraftUpdates = async () => {
+      clearTimeout(liveDraftUpdateTimer);
+      liveDraftUpdateTimer = null;
+      await liveDraftUpdateChain;
+    };
+    const queueLiveDraftUpdate = () => {
+      if (!editorDraft) return;
+      clearTimeout(liveDraftUpdateTimer);
+      liveDraftUpdateTimer = setTimeout(() => {
+        const payload = {
+          selected_groove_id: latestStatus?.settings?.selected_groove_id || null,
+          tracks: editorDraft.tracks,
+          levels: editorDraft.levels
+        };
+        liveDraftUpdateChain = liveDraftUpdateChain.then(async () => {
+          try {
+            await api("/api/live-groove-draft", {
+              method: "PATCH",
+              body: JSON.stringify(payload)
+            });
+          } catch (error) {
+            showMessage(error.message);
+          }
+        });
+      }, 120);
+    };
     document.querySelector("#pair").addEventListener("click", async () => {
       showPairMessage("");
       try {
@@ -501,6 +539,7 @@
         await loadDevices(status.settings);
         latestStatus = status;
         await loadGrooves(status.settings);
+        await loadSelectedGrooveDraft(status.settings.selected_groove_id);
         await refreshStatus();
         beginPolling();
       } catch (error) {
@@ -548,38 +587,37 @@
       await api("/api/preview/stop", { method: "POST", body: "{}" });
       await refreshStatus();
     }));
-    document.querySelector("#groove-select").addEventListener("change", (event) => {
-      updateSetting("selected_groove_id", event.target.value || null);
-    });
-    document.querySelector("#open-groove-editor").addEventListener("click", () => {
-      document.querySelector("#groove-editor-panel").hidden = false;
-      if (!editorDraft && latestStatus?.preview?.running && latestStatus.preview.draft) {
-        setEditorDraft({ ...latestStatus.preview.draft, name: "" }, true);
-      } else if (!editorDraft) {
-        const selectedGrooveId = latestStatus?.settings?.selected_groove_id;
-        const target = selectedGrooveId || "copy-auto";
-        document.querySelector("#editor-target").value = target;
-        loadEditorTarget(target);
+    document.querySelector("#groove-select").addEventListener("change", (event) => withMessage(async () => {
+      const select = event.target;
+      const previousGrooveId = latestStatus?.settings?.selected_groove_id || "";
+      const grooveId = event.target.value || null;
+      if (editorDirty && !window.confirm("Discard unsaved groove changes?")) {
+        select.value = previousGrooveId;
+        return;
       }
-      document.querySelector("#editor-target").focus();
-    });
-    document.querySelector("#close-groove-editor").addEventListener("click", () => withMessage(async () => {
-      if (editorDirty && !window.confirm("Discard unsaved groove changes?")) return;
-      if (latestStatus?.preview?.running) {
-        await api("/api/preview/stop", { method: "POST", body: "{}" });
-        await refreshStatus();
+      await settleLiveDraftUpdates();
+      const draft = await selectedGrooveDraft(grooveId);
+      try {
+        const result = await api("/api/settings", {
+          method: "PATCH",
+          body: JSON.stringify({ selected_groove_id: grooveId })
+        });
+        latestStatus = {
+          ...latestStatus,
+          settings: { ...latestStatus.settings, ...result.settings }
+        };
+        setEditorDraft(draft, false);
+      } catch (error) {
+        select.value = previousGrooveId;
+        throw error;
       }
-      document.querySelector("#groove-editor-panel").hidden = true;
-      editorDirty = false;
-      editorDraft = null;
+      queuePreviewUpdate();
+      await refreshStatus();
     }));
-    document.querySelector("#editor-target").addEventListener("change", (event) => loadEditorTarget(event.target.value));
     document.querySelector("#editor-name").addEventListener("input", (event) => {
       if (!editorDraft) return;
       editorDraft.name = event.target.value;
-      editorDirty = true;
-      setEditorStatus("Unsaved changes");
-      queuePreviewUpdate();
+      markEditorDirty();
     });
     document.querySelector("#step-grid-rows").addEventListener("click", (event) => {
       const cell = event.target.closest("button[data-instrument]");
@@ -592,8 +630,8 @@
         "aria-label",
         `${instrumentNames[instrument]} step ${step + 1} ${editorDraft.tracks[instrument][step] ? "on" : "off"}`
       );
-      editorDirty = true;
-      setEditorStatus("Unsaved changes");
+      markEditorDirty();
+      queueLiveDraftUpdate();
       queuePreviewUpdate();
     });
     document.querySelector("#step-grid-rows").addEventListener("input", (event) => {
@@ -602,38 +640,54 @@
       const instrument = slider.dataset.trackLevel;
       editorDraft.levels[instrument] = Number(slider.value);
       slider.nextElementSibling.textContent = editorDraft.levels[instrument].toFixed(2);
-      editorDirty = true;
-      setEditorStatus("Unsaved changes");
+      markEditorDirty();
+      queueLiveDraftUpdate();
       queuePreviewUpdate();
     });
     document.querySelector("#preview-tempo").addEventListener("input", queuePreviewUpdate);
-    document.querySelector("#save-groove").addEventListener("click", () => withMessage(async () => {
-      if (!editorDraft) throw new Error("Create or select a groove before saving.");
+    const saveDraft = (saveAs) => withMessage(async () => {
+      if (!editorDraft) throw new Error("Select a groove before saving.");
+      const name = editorDraft.name.trim();
+      if (!name) throw new Error("Enter a groove name before saving.");
+      if (!saveAs && !editorDraft.id) throw new Error("Auto snapshots can only be saved as a new groove.");
+      await settleLiveDraftUpdates();
       const payload = {
-        name: editorDraft.name,
+        name,
         tracks: editorDraft.tracks,
         levels: editorDraft.levels
       };
-      if (editorDraft.id) payload.id = editorDraft.id;
+      if (!saveAs) payload.id = editorDraft.id;
       const saved = (await api("/api/grooves", {
         method: "POST",
         body: JSON.stringify(payload)
       })).groove;
-      await loadGrooves();
+      if (saveAs) {
+        const result = await api("/api/settings", {
+          method: "PATCH",
+          body: JSON.stringify({ selected_groove_id: saved.id })
+        });
+        latestStatus = {
+          ...latestStatus,
+          settings: { ...latestStatus.settings, ...result.settings }
+        };
+        document.querySelector("#groove-select").value = saved.id;
+      }
+      await loadGrooves(latestStatus?.settings);
       setEditorDraft(saved, false);
-      editorTargetValue = saved.id;
-      document.querySelector("#editor-target").value = saved.id;
-      setEditorStatus("Saved groove");
-    }));
+      setEditorStatus(saveAs ? "Saved as new groove" : "Saved groove");
+      await refreshStatus();
+    });
+    document.querySelector("#update-groove").addEventListener("click", () => saveDraft(false));
+    document.querySelector("#save-groove").addEventListener("click", () => saveDraft(true));
     document.querySelector("#delete-groove").addEventListener("click", () => withMessage(async () => {
       if (!editorDraft?.id) throw new Error("Select a saved groove to delete.");
       const name = savedGrooves.find((item) => item.id === editorDraft.id)?.name || editorDraft.name;
       if (!window.confirm(`Delete groove "${name}"? This cannot be undone.`)) return;
+      await settleLiveDraftUpdates();
       const result = await api(`/api/grooves/${encodeURIComponent(editorDraft.id)}`, { method: "DELETE" });
-      editorTargetValue = "blank";
       await loadGrooves(result.settings);
       document.querySelector("#groove-select").value = result.settings.selected_groove_id || "";
-      setEditorDraft(blankGroove(), false);
+      await loadSelectedGrooveDraft(result.settings.selected_groove_id);
       setEditorStatus("Groove deleted");
       queuePreviewUpdate();
       await refreshStatus();
@@ -695,6 +749,7 @@
         await loadDevices(status.settings);
         latestStatus = status;
         await loadGrooves(status.settings);
+        await loadSelectedGrooveDraft(status.settings.selected_groove_id);
         paintStatus(status);
         beginPolling();
       } catch (error) {
@@ -715,6 +770,12 @@
         }
       }
     };
+    document.querySelector("#open-settings").addEventListener("click", () => {
+      document.querySelector("#settings-dialog").showModal();
+    });
+    document.querySelector("#close-settings").addEventListener("click", () => {
+      document.querySelector("#settings-dialog").close();
+    });
     document.querySelector("#close-welcome").addEventListener("click", () => {
       document.querySelector("#welcome-dialog").close();
     });

@@ -6,7 +6,9 @@ from time import monotonic
 from types import SimpleNamespace
 
 from drum_companion.control import DeviceRestartRequired, LiveAudioController
+from drum_companion.audio.output import PlaybackCoordinator
 from drum_companion.groove_library import GrooveLibrary, INSTRUMENTS, SavedGroove
+from drum_companion.models import GrooveDecision
 
 
 class IdleCapture:
@@ -190,6 +192,86 @@ class TestLiveAudioController(unittest.TestCase):
                 controller.delete_saved_groove(groove["id"])
             with self.assertRaises(ValueError):
                 controller.delete_saved_groove(None)
+
+    def test_saving_as_creates_a_copy_without_changing_the_source_groove(self):
+        with tempfile.TemporaryDirectory() as directory:
+            library = GrooveLibrary(f"{directory}\\grooves.json")
+            controller = LiveAudioController(groove_library=library)
+            source_tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+            source_tracks["kick"][0] = True
+            levels = {instrument: 1.0 for instrument in INSTRUMENTS}
+            source = controller.save_saved_groove(
+                {"name": "Verse", "tracks": source_tracks, "levels": levels}
+            )
+            edited_tracks = {instrument: list(source_tracks[instrument]) for instrument in INSTRUMENTS}
+            edited_tracks["snare"][4] = True
+
+            saved_copy = controller.save_saved_groove(
+                {"name": "Verse Copy", "tracks": edited_tracks, "levels": levels}
+            )
+            self.assertFalse(library.get_groove(source["id"]).tracks["snare"][4])
+            updated_source = controller.save_saved_groove(
+                {
+                    "id": source["id"],
+                    "name": source["name"],
+                    "tracks": edited_tracks,
+                    "levels": levels,
+                }
+            )
+
+            self.assertNotEqual(saved_copy["id"], source["id"])
+            self.assertEqual(updated_source["id"], source["id"])
+            self.assertTrue(library.get_groove(source["id"]).tracks["snare"][4])
+            self.assertTrue(library.get_groove(saved_copy["id"]).tracks["snare"][4])
+            self.assertEqual(
+                {groove["name"] for groove in controller.list_saved_grooves()},
+                {"Verse", "Verse Copy"},
+            )
+
+    def test_live_groove_draft_overrides_auto_output_without_persisting(self):
+        output = PreviewOutput()
+        with tempfile.TemporaryDirectory() as directory:
+            controller = LiveAudioController(
+                groove_library=GrooveLibrary(f"{directory}\\grooves.json")
+            )
+            draft = self.preview_draft("snare", 0.5)
+            for instrument in INSTRUMENTS:
+                if instrument != "snare":
+                    draft["levels"][instrument] = 0.0
+            controller.update_live_groove_draft(
+                {"selected_groove_id": None, **draft}
+            )
+            decision = GrooveDecision(
+                tempo_bpm=120.0,
+                tempo_confidence=1.0,
+                effective_intensity=0.8,
+                pattern=("K",) * 8,
+                holding_stable_tempo=False,
+                signal_active=True,
+            )
+            coordinator = PlaybackCoordinator(output, horizon_seconds=3.0)
+            coordinator.update(decision, controller._groove_for_playback(controller.settings))
+
+            audible_events = [
+                event.instrument for _, event in output.scheduled if event.velocity > 0
+            ]
+            self.assertTrue(audible_events)
+            self.assertEqual(set(audible_events), {"snare"})
+            self.assertEqual(controller.list_saved_grooves(), [])
+
+            source_tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+            source_tracks["kick"][0] = True
+            source = controller.save_saved_groove(
+                {
+                    "name": "Saved",
+                    "tracks": source_tracks,
+                    "levels": {instrument: 1.0 for instrument in INSTRUMENTS},
+                }
+            )
+            controller.update_settings({"selected_groove_id": source["id"]})
+            selected = controller._groove_for_playback(controller.settings)
+            self.assertTrue(selected.tracks["kick"][0])
+            self.assertFalse(selected.tracks["snare"][0])
 
     def test_saving_selected_groove_is_allowed_during_live_playback(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -58,6 +58,9 @@ class StubController:
     def update_preview(self, values):
         return self.groove_controller.update_preview(values)
 
+    def update_live_groove_draft(self, values):
+        return self.groove_controller.update_live_groove_draft(values)
+
     def stop_preview(self):
         return self.groove_controller.stop_preview()
 
@@ -132,6 +135,18 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b'document.querySelector("#welcome-dialog").showModal()', page)
         self.assertIn(b'id="close-welcome"', page)
 
+    def test_control_page_places_audio_devices_in_settings_dialog(self):
+        _, _, page = self.request("/")
+        text = page.decode("utf-8")
+        dialog = text[text.index('<dialog id="settings-dialog"'):text.index("</dialog>", text.index('<dialog id="settings-dialog"'))]
+
+        self.assertIn('id="open-settings"', text)
+        self.assertIn('aria-label="Settings"', text)
+        for control in ("input-device", "output-device", "drums-enabled", "settings-running-hint"):
+            self.assertIn(f'id="{control}"', dialog)
+        self.assertEqual(text.count('id="input-device"'), 1)
+        self.assertIn("Close Settings and press Stop", dialog)
+
     def test_control_page_contains_unique_ids_for_live_controls(self):
         _, _, page = self.request("/")
         parser = ElementIdParser()
@@ -143,11 +158,35 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b"three reliable estimates agree", page)
         self.assertIn(b"repeat(16, minmax(30px, 1fr))", page)
         self.assertIn(b"step < 16", page)
-        self.assertIn(b"Copy current Auto groove", page)
-        self.assertIn(b'const target = selectedGrooveId || "copy-auto";', page)
-        self.assertIn(b"setEditorDraft(groove, false);", page)
+        groove_section_start = page.index(b'<section aria-labelledby="groove-heading">')
+        groove_section_end = page.index(b"</section>", groove_section_start)
+        self.assertLess(groove_section_start, page.index(b'id="step-grid-rows"'))
+        self.assertLess(page.index(b'id="step-grid-rows"'), groove_section_end)
+        self.assertNotIn(b'id="open-groove-editor"', page)
+        self.assertNotIn(b'id="editor-target"', page)
+        self.assertIn(b"Choose a saved groove above to edit it, or edit the current Auto snapshot.", page)
+        self.assertIn(b"Track edits apply to live playback on future bars, but remain unsaved until you save them.", page)
+        self.assertIn(b"const loadSelectedGrooveDraft = async (grooveId)", page)
+        self.assertIn(b"return groove;", page)
+        self.assertIn(b"setEditorDraft(await selectedGrooveDraft(grooveId), false);", page)
         self.assertIn(b"autoPatternToDraft(pattern)", page)
-        self.assertIn(b"Discard unsaved groove changes?", page)
+        self.assertIn(b"await loadSelectedGrooveDraft(status.settings.selected_groove_id);", page)
+        self.assertIn(b"if (!settings.selected_groove_id && !editorDirty && status.pattern.length)", page)
+        self.assertIn(b'if (editorDirty && !window.confirm("Discard unsaved groove changes?"))', page)
+        self.assertIn(b"select.value = previousGrooveId;", page)
+        self.assertIn(b"const draft = await selectedGrooveDraft(grooveId);", page)
+        self.assertIn(b"...result.settings", page)
+        self.assertIn(b'document.querySelector("#update-groove").addEventListener("click", () => saveDraft(false))', page)
+        self.assertIn(b'document.querySelector("#save-groove").addEventListener("click", () => saveDraft(true))', page)
+        self.assertIn(b"if (!saveAs) payload.id = editorDraft.id;", page)
+        self.assertIn(b"Enter a groove name before saving.", page)
+        self.assertIn(b"Auto snapshots can only be saved as a new groove.", page)
+        self.assertIn(b'api("/api/live-groove-draft"', page)
+        self.assertIn(b"queueLiveDraftUpdate();", page)
+        self.assertIn(b"catch (error) { showMessage(error.message);", page)
+        load_grooves_start = page.index(b"const loadGrooves = async")
+        load_grooves_end = page.index(b"const blankGroove", load_grooves_start)
+        self.assertNotIn(b"setEditorDraft", page[load_grooves_start:load_grooves_end])
         self.assertIn(b"/api/preview/start", page)
         self.assertIn(b"/api/preview/stop", page)
         self.assertIn(b"preview.error", page)
@@ -164,8 +203,8 @@ class TestControlWebServer(unittest.TestCase):
                 "input-device", "output-device", "drums-enabled", "style",                 "feel",
                                 "intensity", "master-level", "muted", "lock-tempo", "pairing-qr",
                 "display-pin", "phone-link",
-                "groove-select", "open-groove-editor", "groove-editor-panel",
-                "editor-target", "editor-name", "step-grid-rows", "save-groove", "delete-groove", "editor-status",
+                "groove-select", "groove-editor-panel",
+                "editor-name", "step-grid-rows", "update-groove", "save-groove", "delete-groove", "editor-status",
                 "preview-tempo", "preview-start", "preview-stop", "preview-status",
             }.issubset(parser.ids)
         )
@@ -290,8 +329,28 @@ class TestControlWebServer(unittest.TestCase):
             origin="http://attacker.example",
         )
         self.controller.state = "running"
+        auto_before_status, _, auto_before_body = self.request(
+            "/api/grooves/auto", authenticated=True
+        )
         saved_status, _, saved_body = self.request(
             "/api/grooves", method="POST", payload=payload, authenticated=True
+        )
+        saved = json.loads(saved_body)["groove"]
+        updated_tracks = {**tracks, "snare": [True] + [False] * 15}
+        updated_status, _, updated_body = self.request(
+            "/api/grooves",
+            method="POST",
+            payload={**payload, "id": saved["id"], "tracks": updated_tracks},
+            authenticated=True,
+        )
+        copy_status, _, copy_body = self.request(
+            "/api/grooves",
+            method="POST",
+            payload={**payload, "name": "Verse Copy", "tracks": updated_tracks},
+            authenticated=True,
+        )
+        auto_after_status, _, auto_after_body = self.request(
+            "/api/grooves/auto", authenticated=True
         )
         live_status, _, live_body = self.request("/api/status", authenticated=True)
         duplicate_status, _, duplicate_body = self.request(
@@ -306,6 +365,12 @@ class TestControlWebServer(unittest.TestCase):
             payload={**payload, "tracks": {**tracks, "kick": [1] * 16}},
             authenticated=True,
         )
+        empty_name_status, _, empty_name_body = self.request(
+            "/api/grooves",
+            method="POST",
+            payload={**payload, "name": ""},
+            authenticated=True,
+        )
 
         self.assertEqual(unpaired_list, 401)
         self.assertEqual(unpaired_save, 401)
@@ -313,7 +378,22 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(empty_list, 200)
         self.assertEqual(cross_origin, 403)
         self.assertEqual(saved_status, 200)
-        saved = json.loads(saved_body)["groove"]
+        self.assertEqual(updated_status, 200)
+        updated = json.loads(updated_body)["groove"]
+        self.assertEqual(updated["id"], saved["id"])
+        self.assertTrue(updated["tracks"]["snare"][0])
+        self.assertEqual(copy_status, 200)
+        saved_copy = json.loads(copy_body)["groove"]
+        self.assertNotEqual(saved_copy["id"], saved["id"])
+        self.assertEqual(saved_copy["name"], "Verse Copy")
+        self.assertTrue(saved_copy["tracks"]["kick"][0])
+        self.assertTrue(saved_copy["tracks"]["snare"][0])
+        self.assertEqual(auto_before_status, 200)
+        self.assertEqual(auto_after_status, 200)
+        self.assertEqual(
+            json.loads(auto_after_body)["pattern"],
+            json.loads(auto_before_body)["pattern"],
+        )
         self.assertEqual(saved["name"], "Verse")
         self.assertEqual(len(saved["tracks"]["kick"]), 16)
         self.assertEqual(live_status, 200)
@@ -322,6 +402,8 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn("already exists", json.loads(duplicate_body)["error"])
         self.assertEqual(invalid_status, 400)
         self.assertIn("booleans", json.loads(invalid_body)["error"])
+        self.assertEqual(empty_name_status, 400)
+        self.assertIn("name must not be empty", json.loads(empty_name_body)["error"])
 
     def test_shutdown_requires_session_and_stops_server(self):
         unpaired, _, _ = self.request("/api/shutdown", method="POST", payload={})
@@ -385,6 +467,47 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(unpaired, 401)
         self.assertEqual(status, 200)
         self.assertEqual(len(json.loads(body)["pattern"]), 8)
+
+    def test_live_groove_draft_api_applies_unsaved_edits_only_to_selected_target(self):
+        tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
+        tracks["snare"][0] = True
+        levels = {instrument: 1.0 for instrument in INSTRUMENTS}
+        payload = {
+            "selected_groove_id": None,
+            "tracks": tracks,
+            "levels": levels,
+        }
+
+        unpaired, _, _ = self.request(
+            "/api/live-groove-draft", method="PATCH", payload=payload
+        )
+        applied, _, applied_body = self.request(
+            "/api/live-groove-draft",
+            method="PATCH",
+            payload=payload,
+            authenticated=True,
+        )
+        stale, _, stale_body = self.request(
+            "/api/live-groove-draft",
+            method="PATCH",
+            payload={**payload, "selected_groove_id": "22345678-1234-5678-1234-567812345678"},
+            authenticated=True,
+        )
+        invalid, _, invalid_body = self.request(
+            "/api/live-groove-draft",
+            method="PATCH",
+            payload={**payload, "tracks": {**tracks, "kick": [1] * 16}},
+            authenticated=True,
+        )
+
+        self.assertEqual(unpaired, 401)
+        self.assertEqual(applied, 200)
+        self.assertTrue(json.loads(applied_body)["updated"])
+        self.assertEqual(stale, 409)
+        self.assertIn("selected groove changed", json.loads(stale_body)["error"])
+        self.assertEqual(invalid, 400)
+        self.assertIn("booleans", json.loads(invalid_body)["error"])
+        self.assertEqual(self.controller.list_saved_grooves(), [])
 
     def test_preview_api_requires_pairing_origin_and_routes_preview_lifecycle(self):
         tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
