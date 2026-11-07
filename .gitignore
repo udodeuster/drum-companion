@@ -9,3 +9,5 @@ dist/
 *.spec
 review_artifacts/
 openspec/
+IDEAS.md
+TODO.md
