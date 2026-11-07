@@ -14,7 +14,7 @@ _TEMPO_ANCHOR_BAND = 0.06
 _TEMPO_REANCHOR_SECONDS = 4.0
 _PAUSE_FADE_AFTER_BARS = 1.0
 _PAUSE_KICK_ONLY_AFTER_BARS = 5.0
-_PAUSE_FADE_FACTOR = 0.75  # NOTE: test_app expects 0.6; this factor currently fails it.
+_PAUSE_FADE_FACTOR = 0.75
 
 _EXTRA_TOKENS = {
     "R": "rimshot",

@@ -6,6 +6,14 @@ appropriate drum groove, adapting its style and dynamics to the performer. The
 drums should sound natural, with a groove that feels expressive rather than
 mechanical.
 
+## License
+
+The project source code is licensed under the [MIT License](LICENSE). The
+bundled drum samples are separately released under CC0 1.0; see the sample
+credits below and `drum_companion/assets/drums/manifest.json`. The app icons
+were generated with Claude and are not covered by the source-code license
+notice.
+
 ## Quick start
 
 This repository now includes a greenfield scaffold for the drum companion concept.
