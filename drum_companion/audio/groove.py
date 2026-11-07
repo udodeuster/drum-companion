@@ -54,7 +54,6 @@ def pattern_to_events(
     if normalized_feel not in {"tight", "relaxed"}:
         raise ValueError(f"Unsupported feel: {feel}")
 
-    variation_bar = len(pattern) != 16 and bar_index % 4 == 3
     step_seconds = (15.0 if len(pattern) == 16 else 30.0) / tempo_bpm
     events: list[DrumEvent] = []
     for step_index, cell in enumerate(pattern):
@@ -70,9 +69,7 @@ def pattern_to_events(
         if "S" in tokens:
             instruments.append("snare")
         if "H" in tokens:
-            instruments.append(
-                "open_hat" if variation_bar and step_index == len(pattern) - 1 else "closed_hat"
-            )
+            instruments.append("closed_hat")
         if "O" in tokens:
             instruments.append("open_hat")
         if "C" in tokens:
@@ -80,11 +77,6 @@ def pattern_to_events(
         for token, instrument in _EXTRA_TOKENS.items():
             if token in tokens:
                 instruments.append(instrument)
-        if variation_bar and step_index == len(pattern) - 1 and "T" not in tokens and "S" not in tokens:
-            instruments.append("tom_low")
-        if variation_bar and step_index == 0 and accented:
-            instruments.append("cymbal")
-
         for instrument in instruments:
             base_velocity = {
                 "kick": 0.78,

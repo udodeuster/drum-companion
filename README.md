@@ -1,9 +1,10 @@
-Drum Companion
+# Drum Companion
 
-Erstellt werden soll eine App die einen Gitarristen bzw. Solokünstler mit der Rhytmusgruppe unterstützt.
-Die App "hört" wenn ein Instrument spielt und setzt mit einem Passenden Rhytmus ein.
-Dabei soll sich die Auswahl der drums, die Spielweise und Dynamik des Rhytmus dem Künstler anpassen.
-Die Sounds sollen natürlich, die Rhytmik soll nicht zu getacktet klingen.
+Drum Companion is designed to support guitarists and solo performers with an
+accompanying rhythm section. It listens for live playing and joins in with an
+appropriate drum groove, adapting its style and dynamics to the performer. The
+drums should sound natural, with a groove that feels expressive rather than
+mechanical.
 
 ## Quick start
 
@@ -43,7 +44,19 @@ The tight feel keeps eighth notes straight. Relaxed feel delays offbeat eighth n
 
 When a tempo estimate is near a multiple or fraction of the last stable pulse (about ½, ⅓, ¼, 2×, 3× or 4×, with 15% tolerance), the app holds the prior pulse until consistent reliable estimates support the alternative for at least three seconds. While drums are playing, such half/double-time estimates are ignored entirely, because the microphone can hear the drums' own eighth notes as a double-time pulse. Other reliable tempo changes are no longer followed immediately: the first reliable tempo is held as an anchor, estimates within about 6% of it are ignored, and a different tempo replaces it only after it persists for about eight seconds or after a pause (the tempo may re-anchor during the first few seconds after playing resumes). The web UI's **Lock tempo for whole song** switch is on by default and keeps the first reliable tempo for the entire session regardless of pauses; turn it off to release the lock, and stopping the session clears it. During a pause the output fades to 60% after one bar, and after about five bars only the kick plays (also for saved grooves); when playing resumes, the full groove returns immediately. The live view exposes current confidence while holding the prior pulse.
 
-During playback, press `M` to mute/unmute, `+` or `-` to adjust output level, and `Q` or `Ctrl+C` to stop. The bundled CC0 starter kit's asset sources and license details are in `drum_companion/assets/drums/manifest.json`; its kick sample receives a modest 25% base gain boost to balance its perceived level with the other instruments. The kit also has rimshot, clap, high/low tom, ride bell, shaker and cowbell. The added percussion sounds use CC0 recordings; their individual source pages are listed in the manifest. Automatic grooves use them sparingly (folk: rimshot layer and shaker, indie chorus: ride bell, variation bars: low-tom fill); all twelve tracks are available in the groove editor, and grooves saved before the extra tracks existed still load. Only the drums are sent to the selected output; guitar/voice input is not monitored through it.
+During playback, press `M` to mute/unmute, `+` or `-` to adjust output level, and `Q` or `Ctrl+C` to stop. The bundled CC0 starter kit's sample sources and licenses are listed below and in `drum_companion/assets/drums/manifest.json`; its kick sample receives a modest 25% base gain boost to balance its perceived level with the other instruments. Automatic grooves use the additional percussion sparingly (folk: rimshot layer and shaker, indie chorus: ride bell). Automatic patterns play only the instruments they indicate; open hi-hat and cymbal hits can be added explicitly in the groove editor. All twelve tracks are available in the groove editor, and grooves saved before the extra tracks existed still load. Only the drums are sent to the selected output; guitar/voice input is not monitored through it.
+
+### Drum sample credits
+
+Many thanks to the Freesound contributors who made these CC0 recordings available. All samples below are released under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/):
+
+| Drum track(s) | Contributor | Source |
+| --- | --- | --- |
+| Kick, snare, closed hi-hat, open hi-hat, cymbal, high tom, low tom | johnnydekk | [Fractanimal Acoustic Drum Kit](https://freesound.org/people/johnnydekk/packs/32722/) ([kick](https://freesound.org/people/johnnydekk/sounds/581461/), [snare](https://freesound.org/people/johnnydekk/sounds/581469/), [closed hi-hat](https://freesound.org/people/johnnydekk/sounds/581471/), [open hi-hat](https://freesound.org/people/johnnydekk/sounds/581476/), [cymbal](https://freesound.org/people/johnnydekk/sounds/581472/), [high tom](https://freesound.org/people/johnnydekk/sounds/581465/), [low tom](https://freesound.org/people/johnnydekk/sounds/581467/)) |
+| Rimshot, ride bell | johnnydekk | [Rimshot](https://freesound.org/people/johnnydekk/sounds/581456/), [ride bell](https://freesound.org/people/johnnydekk/sounds/581470/) |
+| Clap | bastianpusch | [HandClap14.wav](https://freesound.org/people/bastianpusch/sounds/493717/) |
+| Shaker | TheCoolManARM2 | [Shaker 1.wav](https://freesound.org/people/TheCoolManARM2/sounds/524889/) |
+| Cowbell | Neotone | [Cowbell2.wav](https://freesound.org/people/Neotone/sounds/75339/) |
 
 For same-computer or phone control on a private network, start the local browser panel:
 

@@ -70,15 +70,14 @@ class TestGrooveEventMapping(unittest.TestCase):
             {"rimshot", "clap", "tom_high", "tom_low", "ride", "shaker", "cowbell"},
         )
 
-    def test_adds_cymbal_and_open_hat_only_on_controlled_variation_bars(self):
+    def test_automatic_pattern_does_not_add_unrepresented_instruments(self):
         pattern = ("AK-H", "-S-H", "----", "K---", "A---", "-S-H", "----", "---H")
         ordinary_bar = pattern_to_events(pattern, tempo_bpm=120.0, bar_index=1)
         variation_bar = pattern_to_events(pattern, tempo_bpm=120.0, bar_index=3)
 
-        self.assertNotIn("cymbal", {event.instrument for event in ordinary_bar})
-        self.assertNotIn("open_hat", {event.instrument for event in ordinary_bar})
-        self.assertIn("cymbal", {event.instrument for event in variation_bar})
-        self.assertIn("open_hat", {event.instrument for event in variation_bar})
+        expected = {"kick", "snare", "closed_hat"}
+        self.assertEqual({event.instrument for event in ordinary_bar}, expected)
+        self.assertEqual({event.instrument for event in variation_bar}, expected)
 
     def test_rejects_invalid_tempo(self):
         with self.assertRaises(ValueError):
