@@ -1,3 +1,5 @@
+"""Tests for live audio-session controls and runtime setting updates."""
+
 import threading
 import tempfile
 import unittest
@@ -12,25 +14,61 @@ from drum_companion.models import GrooveDecision
 
 
 class IdleCapture:
+    """Provide an idle capture source for controller tests."""
     def __init__(self, **kwargs):
+        """Initialize the instance.
+
+        Args:
+            kwargs (object): Additional keyword arguments forwarded to the operation.
+
+        Returns:
+            None: No value is returned.
+        """
         self.started = False
         self.stopped = False
         self._release = threading.Event()
 
     def start(self):
+        """Start the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         self.started = True
 
     def read(self, timeout=None):
+        """Read the associated resource or event.
+
+        Args:
+            timeout (object): Maximum time to wait, in seconds.
+
+        Returns:
+            None: No value is returned.
+        """
         self._release.wait(timeout)
         raise Empty
 
     def stop(self):
+        """Stop the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         self.stopped = True
         self._release.set()
 
 
 class FakeOutput:
+    """Provide a controllable audio output substitute for tests."""
     def __init__(self, **kwargs):
+        """Initialize the instance.
+
+        Args:
+            kwargs (object): Additional keyword arguments forwarded to the operation.
+
+        Returns:
+            None: No value is returned.
+        """
         self.sample_bank = SimpleNamespace(sample_rate=1000)
         self.master_level = 1.0
         self.is_muted = False
@@ -38,20 +76,59 @@ class FakeOutput:
         self.stopped = False
 
     def set_master_level(self, level):
+        """Set master level.
+
+        Args:
+            level (object): Output level to apply.
+
+        Returns:
+            None: No value is returned.
+        """
         self.master_level = level
 
     def set_muted(self, muted):
+        """Set muted.
+
+        Args:
+            muted (object): Whether audio output should be muted.
+
+        Returns:
+            None: No value is returned.
+        """
         self.is_muted = muted
 
     def start(self):
+        """Start the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         self.started = True
 
     def stop(self):
+        """Stop the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         self.stopped = True
 
 
 class PreviewOutput(FakeOutput):
+    """Capture preview events for controller tests."""
     def __init__(self, *, fail_start=False, fail_stop=False, **kwargs):
+        """Initialize the instance.
+
+        Args:
+            fail_start (object): Whether the test stream should simulate a start
+                failure.
+            fail_stop (object): Whether the test stream should simulate a stop
+                failure.
+            kwargs (object): Additional keyword arguments forwarded to the operation.
+
+        Returns:
+            None: No value is returned.
+        """
         super().__init__(**kwargs)
         self.sample_bank = SimpleNamespace(sample_rate=1000)
         self.frame_position = 0
@@ -61,21 +138,50 @@ class PreviewOutput(FakeOutput):
         self.callback_error = None
 
     def start(self):
+        """Start the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         if self.fail_start:
             raise RuntimeError("preview output unavailable")
         self.started = True
 
     def schedule(self, event, frame_position):
+        """Schedule the associated resource or event.
+
+        Args:
+            event (object): Scheduled audio event to process.
+            frame_position (object): Output-frame position associated with the event.
+
+        Returns:
+            None: No value is returned.
+        """
         self.scheduled.append((frame_position, event))
 
     def stop(self):
+        """Stop the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         self.stopped = True
         if self.fail_stop:
             raise RuntimeError("preview output close failed")
 
 
 class TestLiveAudioController(unittest.TestCase):
+    """Test live audio controller behavior."""
     def wait_for_state(self, controller, state):
+        """Wait until the controller reaches the requested state.
+
+        Args:
+            controller (object): Controller instance under test or control.
+            state (object): Expected or requested controller state.
+
+        Returns:
+            None: No value is returned.
+        """
         deadline = monotonic() + 1.0
         while monotonic() < deadline:
             if controller.snapshot()["state"] == state:
@@ -84,6 +190,15 @@ class TestLiveAudioController(unittest.TestCase):
         self.fail(f"controller did not reach state {state}")
 
     def wait_for_preview_state(self, controller, state):
+        """Wait for for preview state.
+
+        Args:
+            controller (object): Controller instance under test or control.
+            state (object): Expected or requested controller state.
+
+        Returns:
+            None: No value is returned.
+        """
         deadline = monotonic() + 1.0
         while monotonic() < deadline:
             if controller.snapshot()["preview"]["state"] == state:
@@ -93,6 +208,15 @@ class TestLiveAudioController(unittest.TestCase):
 
     @staticmethod
     def preview_draft(instrument="kick", level=1.0):
+        """Handle preview draft.
+
+        Args:
+            instrument (object): Instrument name associated with the track or sample.
+            level (object): Output level to apply.
+
+        Returns:
+            dict: The result produced by this operation.
+        """
         tracks = {name: [False] * 16 for name in INSTRUMENTS}
         tracks[instrument][0] = True
         levels = {name: 1.0 for name in INSTRUMENTS}
@@ -103,6 +227,11 @@ class TestLiveAudioController(unittest.TestCase):
         }
 
     def test_worker_start_runtime_controls_and_stop(self):
+        """Exercise the `worker start runtime controls and stop` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         capture = IdleCapture()
         output = FakeOutput()
         controller = LiveAudioController(
@@ -132,6 +261,11 @@ class TestLiveAudioController(unittest.TestCase):
         self.assertTrue(output.stopped)
 
     def test_device_selection_and_setting_validation_while_stopped(self):
+        """Exercise the `device selection and setting validation while stopped` test...
+
+        Returns:
+            None: No value is returned.
+        """
         controller = LiveAudioController()
 
         self.assertEqual(controller.settings.onset_timeout_bars, 1)
@@ -153,6 +287,11 @@ class TestLiveAudioController(unittest.TestCase):
             controller.update_settings({"unknown": True})
 
     def test_saved_groove_selection_is_validated_and_can_return_to_auto(self):
+        """Exercise the `saved groove selection is validated and can return to auto`...
+
+        Returns:
+            None: No value is returned.
+        """
         with tempfile.TemporaryDirectory() as directory:
             library = GrooveLibrary(f"{directory}\\grooves.json")
             groove = SavedGroove.create(
@@ -174,6 +313,11 @@ class TestLiveAudioController(unittest.TestCase):
                 controller.update_settings({"selected_groove_id": "not-an-id"})
 
     def test_deleting_selected_groove_falls_back_to_auto(self):
+        """Exercise the `deleting selected groove falls back to auto` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         with tempfile.TemporaryDirectory() as directory:
             library = GrooveLibrary(f"{directory}\\grooves.json")
             tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
@@ -195,6 +339,11 @@ class TestLiveAudioController(unittest.TestCase):
                 controller.delete_saved_groove(None)
 
     def test_saving_as_creates_a_copy_without_changing_the_source_groove(self):
+        """Exercise the `saving as creates a copy without changing the source...
+
+        Returns:
+            None: No value is returned.
+        """
         with tempfile.TemporaryDirectory() as directory:
             library = GrooveLibrary(f"{directory}\\grooves.json")
             controller = LiveAudioController(groove_library=library)
@@ -230,6 +379,11 @@ class TestLiveAudioController(unittest.TestCase):
             )
 
     def test_live_groove_draft_overrides_auto_output_without_persisting(self):
+        """Exercise the `live groove draft overrides auto output without persisting`...
+
+        Returns:
+            None: No value is returned.
+        """
         output = PreviewOutput()
         with tempfile.TemporaryDirectory() as directory:
             controller = LiveAudioController(
@@ -275,6 +429,11 @@ class TestLiveAudioController(unittest.TestCase):
             self.assertFalse(selected.tracks["snare"][0])
 
     def test_saving_selected_groove_is_allowed_during_live_playback(self):
+        """Exercise the `saving selected groove is allowed during live playback`...
+
+        Returns:
+            None: No value is returned.
+        """
         with tempfile.TemporaryDirectory() as directory:
             library = GrooveLibrary(f"{directory}\\grooves.json")
             controller = LiveAudioController(
@@ -311,6 +470,11 @@ class TestLiveAudioController(unittest.TestCase):
                 controller.stop()
 
     def test_saving_non_selected_groove_does_not_change_live_selection(self):
+        """Exercise the `saving non selected groove does not change live selection`...
+
+        Returns:
+            None: No value is returned.
+        """
         with tempfile.TemporaryDirectory() as directory:
             library = GrooveLibrary(f"{directory}\\grooves.json")
             controller = LiveAudioController(
@@ -350,6 +514,11 @@ class TestLiveAudioController(unittest.TestCase):
                 controller.stop()
 
     def test_tempo_range_settings_are_validated_together(self):
+        """Exercise the `tempo range settings are validated together` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         controller = LiveAudioController()
 
         self.assertEqual((controller.settings.min_tempo_bpm, controller.settings.max_tempo_bpm), (40, 140))
@@ -362,6 +531,11 @@ class TestLiveAudioController(unittest.TestCase):
         self.assertEqual(controller.settings.min_tempo_bpm, 50)
 
     def test_preview_uses_default_or_last_live_tempo_and_validates_manual_tempo(self):
+        """Exercise the `preview uses default or last live tempo and validates...
+
+        Returns:
+            None: No value is returned.
+        """
         output = PreviewOutput()
         controller = LiveAudioController(output_factory=lambda **kwargs: output)
 
@@ -387,6 +561,11 @@ class TestLiveAudioController(unittest.TestCase):
         controller.stop_preview()
 
     def test_preview_is_independent_of_capture_and_exclusive_with_live_session(self):
+        """Exercise the `preview is independent of capture and exclusive with live...
+
+        Returns:
+            None: No value is returned.
+        """
         output = PreviewOutput()
         capture = IdleCapture()
         controller = LiveAudioController(
@@ -410,6 +589,11 @@ class TestLiveAudioController(unittest.TestCase):
         self.assertTrue(capture.stopped)
 
     def test_preview_applies_unsaved_draft_at_next_bar_and_reports_output_failures(self):
+        """Exercise the `preview applies unsaved draft at next bar and reports...
+
+        Returns:
+            None: No value is returned.
+        """
         output = PreviewOutput()
         with tempfile.TemporaryDirectory() as directory:
             controller = LiveAudioController(

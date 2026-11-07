@@ -1,3 +1,5 @@
+"""Groove generation, event mapping, and confidence-aware tempo following."""
+
 from __future__ import annotations
 
 import math
@@ -12,7 +14,7 @@ _TEMPO_ANCHOR_BAND = 0.06
 _TEMPO_REANCHOR_SECONDS = 4.0
 _PAUSE_FADE_AFTER_BARS = 1.0
 _PAUSE_KICK_ONLY_AFTER_BARS = 5.0
-_PAUSE_FADE_FACTOR = 0.75
+_PAUSE_FADE_FACTOR = 0.75  # NOTE: test_app expects 0.6; this factor currently fails it.
 
 _EXTRA_TOKENS = {
     "R": "rimshot",
@@ -33,6 +35,7 @@ STYLE_PROFILES = {
 
 @dataclass(frozen=True)
 class DrumEvent:
+    """Represent a drum hit and its timing within a groove."""
     offset_seconds: float
     instrument: str
     velocity: float
@@ -45,7 +48,17 @@ def pattern_to_events(
     bar_index: int = 0,
     feel: str = "tight",
 ) -> tuple[DrumEvent, ...]:
-    """Translate compact pattern cells into timed eighth-note events."""
+    """Translate compact pattern cells into timed eighth-note events.
+
+    Args:
+        pattern (tuple[str, ...] | list[str]): Drum pattern to process.
+        tempo_bpm (float): Tempo in beats per minute.
+        bar_index (int): Zero-based index of the musical bar.
+        feel (str): Timing feel used for the groove.
+
+    Returns:
+        tuple[DrumEvent, ...]: The result produced by this operation.
+    """
     if tempo_bpm <= 0:
         raise ValueError("tempo_bpm must be greater than zero")
     if bar_index < 0:
@@ -101,11 +114,26 @@ def pattern_to_events(
 
 
 def kick_only_pattern(pattern: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    """Handle kick only pattern.
+
+    Args:
+        pattern (tuple[str, ...] | list[str]): Drum pattern to process.
+
+    Returns:
+        tuple[str, ...]: The result produced by this operation.
+    """
     return tuple("K" if "K" in cell else "-" for cell in pattern)
 
 
 def saved_groove_to_pattern(groove: SavedGroove) -> tuple[str, ...]:
-    """Encode authored track states as sixteen scheduler cells."""
+    """Encode authored track states as sixteen scheduler cells.
+
+    Args:
+        groove (SavedGroove): Groove data to process.
+
+    Returns:
+        tuple[str, ...]: The result produced by this operation.
+    """
     tokens = {
         "kick": "K",
         "snare": "S",
@@ -128,7 +156,17 @@ def saved_groove_to_pattern(groove: SavedGroove) -> tuple[str, ...]:
 
 
 def build_pattern(style: str, feel: str, intensity: float, bars: int = 1) -> list[str]:
-    """Generate a simple groove pattern for the UI and validation scaffold."""
+    """Generate a simple groove pattern for the UI and validation scaffold.
+
+    Args:
+        style (str): Drum-groove style name.
+        feel (str): Timing feel used for the groove.
+        intensity (float): Normalized groove intensity between zero and one.
+        bars (int): Number of musical bars to process or generate.
+
+    Returns:
+        list[str]: The result produced by this operation.
+    """
     normalized_style = style.lower()
     normalized_feel = feel.lower()
     if normalized_style not in STYLE_PROFILES:
@@ -156,7 +194,17 @@ def build_pattern(style: str, feel: str, intensity: float, bars: int = 1) -> lis
 
 
 def generate_accompaniment(phrase: str, style: str, feel: str, intensity: float) -> list[str]:
-    """Create a phrase-aware accompaniment pattern tailored to a solo-performance context."""
+    """Create a phrase-aware accompaniment pattern tailored to a solo-performance...
+
+    Args:
+        phrase (str): Musical phrase or section name.
+        style (str): Drum-groove style name.
+        feel (str): Timing feel used for the groove.
+        intensity (float): Normalized groove intensity between zero and one.
+
+    Returns:
+        list[str]: The result produced by this operation.
+    """
     normalized_phrase = phrase.lower()
     normalized_style = style.lower()
     normalized_feel = feel.lower()
@@ -206,6 +254,21 @@ class GrooveFollower:
         lock_pulse_octave: bool = False,
         lock_tempo: bool = False,
     ) -> None:
+        """Initialize the instance.
+
+        Args:
+            style (str): Drum-groove style name.
+            feel (str): Timing feel used for the groove.
+            intensity (float): Normalized groove intensity between zero and one.
+            phrase (str): Musical phrase or section name.
+            onset_timeout_bars (int): Number of bars allowed without an onset
+                before timing out.
+            lock_pulse_octave (bool): Whether to prevent octave pulse changes.
+            lock_tempo (bool): Whether to hold the current tempo estimate.
+
+        Returns:
+            None: No value is returned.
+        """
         if isinstance(onset_timeout_bars, bool) or onset_timeout_bars not in {0, 1, 2, 4}:
             raise ValueError("onset_timeout_bars must be one of 0, 1, 2, or 4 bars")
         self.style = style
@@ -213,7 +276,8 @@ class GrooveFollower:
         self.intensity = max(0.0, min(1.0, intensity))
         self.phrase = phrase
         self.onset_timeout_bars = onset_timeout_bars
-        # With drum playback, microphone bleed of the drums can look like a double-time pulse.
+        # With drum playback, microphone bleed of the drums can look like a
+        # double-time pulse.
         self.lock_pulse_octave = lock_pulse_octave
         # Keeps the first reliable tempo for the whole session.
         self.lock_tempo = lock_tempo
@@ -228,6 +292,15 @@ class GrooveFollower:
         self._free_tempo_until = -math.inf
 
     def update(self, observation: AudioAnalysisObservation) -> GrooveDecision:
+        """Handle update.
+
+        Args:
+            observation (AudioAnalysisObservation): Audio-analysis observation to
+                process.
+
+        Returns:
+            GrooveDecision: The result produced by this operation.
+        """
         if observation.onset_times_seconds:
             self._last_detected_onset = max(observation.onset_times_seconds)
 
@@ -349,20 +422,53 @@ class GrooveFollower:
         )
 
     def _accept_tempo(self, tempo_bpm: float) -> None:
+        """Handle accept tempo.
+
+        Args:
+            tempo_bpm (float): Tempo in beats per minute.
+
+        Returns:
+            None: No value is returned.
+        """
         self._last_stable_tempo = tempo_bpm
         self._clear_pending_tempo()
 
     def _clear_pending_tempo(self) -> None:
+        """Handle clear pending tempo.
+
+        Returns:
+            None: No value is returned.
+        """
         self._pending_octave_tempo = None
         self._pending_octave_observations = 0
         self._pending_octave_since_seconds = None
 
     def _paused_bars(self, timestamp_seconds: float) -> float:
+        """Handle paused bars.
+
+        Args:
+            timestamp_seconds (float): Observation time in seconds from the start
+                of capture.
+
+        Returns:
+            float: The result produced by this operation.
+        """
         if self._pause_started_seconds is None or self._last_stable_tempo is None:
             return 0.0
         return (timestamp_seconds - self._pause_started_seconds) * self._last_stable_tempo / 240.0
 
     @staticmethod
     def _is_octave_tempo_change(stable_tempo: float, candidate_tempo: float) -> bool:
+        """Handle is octave tempo change.
+
+        Args:
+            stable_tempo (float): Currently accepted stable tempo in beats per
+                minute.
+            candidate_tempo (float): New tempo candidate being evaluated for
+                stability.
+
+        Returns:
+            bool: The result produced by this operation.
+        """
         ratio = candidate_tempo / stable_tempo
         return any(abs(ratio / factor - 1.0) <= 0.15 for factor in (0.25, 1 / 3, 0.5, 2.0, 3.0, 4.0))

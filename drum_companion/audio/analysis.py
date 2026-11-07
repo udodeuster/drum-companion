@@ -1,3 +1,5 @@
+"""Audio feature analysis for live input and WAV-file previews."""
+
 from __future__ import annotations
 
 from collections import deque
@@ -17,7 +19,17 @@ def estimate_performance_context(
     guitar_energy: float,
     phrase: str = "verse",
 ) -> PerformanceContext:
-    """Create a simplified context for the manual/demo CLI mode."""
+    """Create a simplified context for the manual/demo CLI mode.
+
+    Args:
+        tempo_hint (float): Optional tempo estimate used to guide audio analysis.
+        voice_energy (float): Measured energy of the vocal input.
+        guitar_energy (float): Measured energy of the guitar input.
+        phrase (str): Musical phrase or section name.
+
+    Returns:
+        PerformanceContext: The result produced by this operation.
+    """
     if tempo_hint <= 0:
         raise ValueError("tempo_hint must be greater than zero")
 
@@ -44,6 +56,20 @@ class AudioAnalyzer:
         min_tempo_bpm: float = 60.0,
         max_tempo_bpm: float = 180.0,
     ) -> None:
+        """Initialize the instance.
+
+        Args:
+            sample_rate (int): Audio sampling rate in samples per second.
+            window_seconds (float): Analysis window length in seconds.
+            update_interval_seconds (float): The update interval seconds used by
+                this operation.
+            hop_length (int): Sample count between adjacent analysis windows.
+            min_tempo_bpm (float): Minimum accepted tempo in beats per minute.
+            max_tempo_bpm (float): Maximum accepted tempo in beats per minute.
+
+        Returns:
+            None: No value is returned.
+        """
         if sample_rate <= 0 or window_seconds <= 0 or update_interval_seconds <= 0:
             raise ValueError("sample rate and analysis durations must be positive")
         self.set_tempo_range(min_tempo_bpm, max_tempo_bpm)
@@ -60,12 +86,29 @@ class AudioAnalyzer:
 
     def set_tempo_range(self, min_tempo_bpm: float, max_tempo_bpm: float) -> None:
         # A range narrower than one octave could not fold every estimate into it.
+        """Set tempo range.
+
+        Args:
+            min_tempo_bpm (float): Minimum accepted tempo in beats per minute.
+            max_tempo_bpm (float): Maximum accepted tempo in beats per minute.
+
+        Returns:
+            None: No value is returned.
+        """
         if min_tempo_bpm <= 0 or max_tempo_bpm < 2.0 * min_tempo_bpm:
             raise ValueError("tempo range must be positive and span at least one octave")
         self.min_tempo_bpm = float(min_tempo_bpm)
         self.max_tempo_bpm = float(max_tempo_bpm)
 
     def process_block(self, block: AudioBlock) -> AudioAnalysisObservation | None:
+        """Handle process block.
+
+        Args:
+            block (AudioBlock): Audio block to process.
+
+        Returns:
+            AudioAnalysisObservation | None: The result produced by this operation.
+        """
         if block.sample_rate != self.sample_rate:
             raise ValueError("audio block sample rate changed during analysis")
 
@@ -179,6 +222,11 @@ class AudioAnalyzer:
         )
 
     def _trim_window(self) -> None:
+        """Handle trim window.
+
+        Returns:
+            None: No value is returned.
+        """
         while self._buffered_samples > self.window_samples and self._chunks:
             excess = self._buffered_samples - self.window_samples
             first = self._chunks[0]
@@ -196,7 +244,17 @@ def analyze_wav(
     update_interval_seconds: float = 0.5,
     block_size: int = 1024,
 ) -> list[AudioAnalysisObservation]:
-    """Analyze a WAV file using the same block processor as live capture."""
+    """Analyze a WAV file using the same block processor as live capture.
+
+    Args:
+        path (str | Path): Filesystem path used by the operation.
+        update_interval_seconds (float): The update interval seconds used by this
+            operation.
+        block_size (int): Number of audio frames per captured block.
+
+    Returns:
+        list[AudioAnalysisObservation]: The result produced by this operation.
+    """
     samples, sample_rate = sf.read(path, dtype="float32", always_2d=True)
     mono = np.mean(samples, axis=1, dtype=np.float32)
     analyzer = AudioAnalyzer(

@@ -1,3 +1,5 @@
+"""Tests for saved-groove validation and persistent library behavior."""
+
 import unittest
 import json
 import tempfile
@@ -14,6 +16,14 @@ from drum_companion.groove_library import (
 
 
 def make_groove(**overrides):
+    """Create groove.
+
+    Args:
+        overrides (object): Field values that replace the corresponding defaults.
+
+    Returns:
+        object: The result produced by this operation.
+    """
     tracks = {instrument: (False,) * 16 for instrument in INSTRUMENTS}
     levels = {instrument: 0.75 for instrument in INSTRUMENTS}
     values = {"id": "12345678-1234-5678-1234-567812345678", "name": "Verse", "tracks": tracks, "levels": levels}
@@ -22,7 +32,13 @@ def make_groove(**overrides):
 
 
 class TestSavedGroove(unittest.TestCase):
+    """Test saved groove behavior."""
     def test_loads_legacy_five_track_library_with_empty_new_tracks(self):
+        """Exercise the `loads legacy five track library with empty new tracks` test...
+
+        Returns:
+            None: No value is returned.
+        """
         legacy = ("kick", "snare", "closed_hat", "open_hat", "cymbal")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "grooves.json"
@@ -42,6 +58,11 @@ class TestSavedGroove(unittest.TestCase):
         self.assertEqual(groove.levels["cowbell"], 1.0)
         self.assertEqual(groove.levels["kick"], 0.5)
     def test_creates_stable_id_and_normalizes_immutable_track_data(self):
+        """Exercise the `creates stable id and normalizes immutable track data` test...
+
+        Returns:
+            None: No value is returned.
+        """
         groove = SavedGroove.create(
             "Verse",
             {instrument: [False] * 16 for instrument in INSTRUMENTS},
@@ -54,6 +75,11 @@ class TestSavedGroove(unittest.TestCase):
             groove.levels["kick"] = 1.0
 
     def test_rejects_invalid_id_and_empty_or_trimmed_name(self):
+        """Exercise the `rejects invalid id and empty or trimmed name` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         for overrides in (
             {"id": "not-a-uuid"},
             {"id": "12345678123456781234567812345678"},
@@ -65,6 +91,11 @@ class TestSavedGroove(unittest.TestCase):
                 make_groove(**overrides)
 
     def test_requires_exact_tracks_and_sixteen_boolean_steps(self):
+        """Exercise the `requires exact tracks and sixteen boolean steps` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         tracks = {instrument: (False,) * 16 for instrument in INSTRUMENTS}
         with self.assertRaisesRegex(ValueError, "exactly"):
             make_groove(tracks={**tracks, "tom": (False,) * 16})
@@ -74,6 +105,11 @@ class TestSavedGroove(unittest.TestCase):
             make_groove(tracks={**tracks, "kick": (1,) + (False,) * 15})
 
     def test_requires_all_track_levels_to_be_finite_and_bounded(self):
+        """Exercise the `requires all track levels to be finite and bounded` test...
+
+        Returns:
+            None: No value is returned.
+        """
         levels = {instrument: 0.75 for instrument in INSTRUMENTS}
         with self.assertRaisesRegex(ValueError, "exactly"):
             make_groove(levels={"kick": 0.5})
@@ -83,7 +119,13 @@ class TestSavedGroove(unittest.TestCase):
 
 
 class TestGrooveLibrary(unittest.TestCase):
+    """Test groove library behavior."""
     def test_explicit_save_persists_versioned_library_across_instances(self):
+        """Exercise the `explicit save persists versioned library across instances`...
+
+        Returns:
+            None: No value is returned.
+        """
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "grooves.json"
             groove = make_groove()
@@ -98,6 +140,11 @@ class TestGrooveLibrary(unittest.TestCase):
             self.assertEqual(GrooveLibrary(path).list_grooves(), (groove,))
 
     def test_rejects_duplicate_names_case_insensitively_and_updates_same_id(self):
+        """Exercise the `rejects duplicate names case insensitively and updates same...
+
+        Returns:
+            None: No value is returned.
+        """
         with tempfile.TemporaryDirectory() as directory:
             library = GrooveLibrary(Path(directory) / "grooves.json")
             first = make_groove()
@@ -114,6 +161,11 @@ class TestGrooveLibrary(unittest.TestCase):
             self.assertEqual(library.save_groove(updated), (updated,))
 
     def test_reports_invalid_or_unsupported_library_instead_of_replacing_it(self):
+        """Exercise the `reports invalid or unsupported library instead of replacing...
+
+        Returns:
+            None: No value is returned.
+        """
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "grooves.json"
             path.write_text('{"version": 2, "grooves": []}', encoding="utf-8")
@@ -123,6 +175,11 @@ class TestGrooveLibrary(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["version"], 2)
 
     def test_reports_read_and_write_failures(self):
+        """Exercise the `reports read and write failures` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         with tempfile.TemporaryDirectory() as directory:
             parent_file = Path(directory) / "not-a-directory"
             parent_file.write_text("file", encoding="utf-8")
@@ -138,6 +195,11 @@ class TestGrooveLibrary(unittest.TestCase):
                     library.save_groove(make_groove())
 
     def test_failed_atomic_replace_preserves_previous_library(self):
+        """Exercise the `failed atomic replace preserves previous library` test...
+
+        Returns:
+            None: No value is returned.
+        """
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "grooves.json"
             library = GrooveLibrary(path)

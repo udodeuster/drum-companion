@@ -7,3 +7,5 @@ venv/
 build/
 dist/
 *.spec
+review_artifacts/
+openspec/

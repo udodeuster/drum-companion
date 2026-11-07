@@ -1,3 +1,5 @@
+"""Tests for the local web interface and its live-control endpoints."""
+
 import json
 import threading
 import tempfile
@@ -16,7 +18,16 @@ from drum_companion.web import ControlRequestHandler, create_control_server
 
 
 class StubController:
+    """Provide a lightweight controller for HTTP endpoint tests."""
     def __init__(self, storage_directory):
+        """Initialize the instance.
+
+        Args:
+            storage_directory (object): Directory used to store persistent test data.
+
+        Returns:
+            None: No value is returned.
+        """
         self.state = "stopped"
         self.settings = {}
         self.groove_controller = LiveAudioController(
@@ -24,58 +35,157 @@ class StubController:
         )
 
     def snapshot(self):
+        """Return the current controller state and settings snapshot.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         snapshot = self.groove_controller.snapshot()
         snapshot.update({"state": self.state, "running": self.state == "running"})
         return snapshot
 
     def start(self):
+        """Start the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         self.state = "running"
 
     def stop(self):
+        """Stop the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         self.state = "stopped"
 
     def update_settings(self, values):
+        """Update settings.
+
+        Args:
+            values (object): Settings or field values to apply to the operation.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         if self.state == "running" and {"input_device", "output_device", "drums_enabled"}.intersection(values):
             raise DeviceRestartRequired("Stop the live session before changing audio devices or drum playback")
         self.settings.update(values)
         return dict(self.settings)
 
     def list_saved_grooves(self):
+        """List saved grooves.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         return self.groove_controller.list_saved_grooves()
 
     def save_saved_groove(self, values):
+        """Save saved groove.
+
+        Args:
+            values (object): Settings or field values to apply to the operation.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         return self.groove_controller.save_saved_groove(values)
 
     def delete_saved_groove(self, groove_id):
+        """Delete saved groove.
+
+        Args:
+            groove_id (object): Unique identifier of the saved groove.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         return self.groove_controller.delete_saved_groove(groove_id)
 
     def automatic_groove_pattern(self):
+        """Handle automatic groove pattern.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         return self.groove_controller.automatic_groove_pattern()
 
     def start_preview(self, values):
+        """Start preview.
+
+        Args:
+            values (object): Settings or field values to apply to the operation.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         return self.groove_controller.start_preview(values)
 
     def update_preview(self, values):
+        """Update preview.
+
+        Args:
+            values (object): Settings or field values to apply to the operation.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         return self.groove_controller.update_preview(values)
 
     def update_live_groove_draft(self, values):
+        """Update live groove draft.
+
+        Args:
+            values (object): Settings or field values to apply to the operation.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         return self.groove_controller.update_live_groove_draft(values)
 
     def stop_preview(self):
+        """Stop preview.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         return self.groove_controller.stop_preview()
 
 
 class ElementIdParser(HTMLParser):
+    """Collect HTML element identifiers while parsing a page."""
     def __init__(self):
+        """Initialize the instance.
+
+        Returns:
+            None: No value is returned.
+        """
         super().__init__()
         self.ids = []
 
     def handle_starttag(self, tag, attrs):
+        """Handle starttag.
+
+        Args:
+            tag (object): HTML tag name to inspect.
+            attrs (object): HTML attributes associated with the element.
+
+        Returns:
+            None: No value is returned.
+        """
         self.ids.extend(value for name, value in attrs if name == "id")
 
 
 class TestControlWebServer(unittest.TestCase):
+    """Test control web server behavior."""
     def setUp(self):
+        """Handle set up.
+
+        Returns:
+            None: No value is returned.
+        """
         self.storage = tempfile.TemporaryDirectory()
         self.controller = StubController(self.storage.name)
         self.server = create_control_server(
@@ -92,12 +202,30 @@ class TestControlWebServer(unittest.TestCase):
         self.server.phone_url = f"http://192.168.1.42:{self.server.server_address[1]}/"
 
     def tearDown(self):
+        """Handle tear down.
+
+        Returns:
+            None: No value is returned.
+        """
         self.server.shutdown()
         self.thread.join(timeout=1.0)
         self.server.server_close()
         self.storage.cleanup()
 
     def request(self, path, *, method="GET", payload=None, authenticated=False, token=None, origin=None):
+        """Handle request.
+
+        Args:
+            path (object): Filesystem path used by the operation.
+            method (object): HTTP method used for the request.
+            payload (object): Request data or response payload to process.
+            authenticated (object): Whether the request has a valid session.
+            token (object): Session token presented by the client.
+            origin (object): Origin header supplied by the client.
+
+        Returns:
+            tuple: The result produced by this operation.
+        """
         headers = {}
         data = None
         if payload is not None:
@@ -115,6 +243,11 @@ class TestControlWebServer(unittest.TestCase):
             return error.code, error.headers.get_content_type(), error.read()
 
     def test_serves_control_page_and_requires_authentication_for_status(self):
+        """Exercise the `serves control page and requires authentication for status`...
+
+        Returns:
+            None: No value is returned.
+        """
         page_status, content_type, page = self.request("/")
         private_status, _, private = self.request("/api/status")
         status, api_type, body = self.request("/api/status", authenticated=True)
@@ -136,6 +269,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b'id="close-welcome"', page)
 
     def test_control_page_places_audio_devices_in_settings_dialog(self):
+        """Exercise the `control page places audio devices in settings dialog` test...
+
+        Returns:
+            None: No value is returned.
+        """
         _, _, page = self.request("/")
         text = page.decode("utf-8")
         dialog = text[text.index('<dialog id="settings-dialog"'):text.index("</dialog>", text.index('<dialog id="settings-dialog"'))]
@@ -151,6 +289,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn('id="phone-link"', dialog)
 
     def test_control_page_contains_unique_ids_for_live_controls(self):
+        """Exercise the `control page contains unique ids for live controls` test...
+
+        Returns:
+            None: No value is returned.
+        """
         _, _, page = self.request("/")
         parser = ElementIdParser()
         parser.feed(page.decode("utf-8"))
@@ -227,6 +370,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b"Preview on host", page)
 
     def test_host_pairing_details_include_fragment_pin_and_svg_qr(self):
+        """Exercise the `host pairing details include fragment pin and svg qr` test...
+
+        Returns:
+            None: No value is returned.
+        """
         details_status, _, details_body = self.request("/api/pairing")
         qr_status, qr_type, qr_body = self.request("/api/pairing-qr.svg")
         details = json.loads(details_body)
@@ -241,6 +389,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b"<svg", qr_body)
 
     def test_host_browser_can_create_a_loopback_session_without_consuming_phone_pairing(self):
+        """Exercise the `host browser can create a loopback session without...
+
+        Returns:
+            None: No value is returned.
+        """
         status, _, session_body = self.request(
             "/api/host-session",
             method="POST",
@@ -255,6 +408,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertFalse(self.server.pairing_used)
 
     def test_host_session_is_denied_to_non_loopback_clients(self):
+        """Exercise the `host session is denied to non loopback clients` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         with patch.object(ControlRequestHandler, "_loopback_client", return_value=False):
             status, _, body = self.request(
                 "/api/host-session",
@@ -267,6 +425,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(self.server.sessions, {self.token})
 
     def test_pairing_pin_details_are_not_available_to_lan_clients(self):
+        """Exercise the `pairing pin details are not available to lan clients` test...
+
+        Returns:
+            None: No value is returned.
+        """
         from types import SimpleNamespace
 
         self.assertFalse(
@@ -276,6 +439,11 @@ class TestControlWebServer(unittest.TestCase):
         )
 
     def test_playback_lifecycle_and_device_list_are_local_api_routes(self):
+        """Exercise the `playback lifecycle and device list are local api routes`...
+
+        Returns:
+            None: No value is returned.
+        """
         from unittest.mock import patch
 
         with (
@@ -299,6 +467,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(json.loads(stop_body)["state"], "stopped")
 
     def test_settings_api_rejects_unpaired_start_and_reports_restart_requirement(self):
+        """Exercise the `settings api rejects unpaired start and reports restart...
+
+        Returns:
+            None: No value is returned.
+        """
         unpaired, _, _ = self.request("/api/start", method="POST", payload={})
         updated, _, updated_body = self.request(
             "/api/settings",
@@ -323,6 +496,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertTrue(json.loads(restart_body)["restart_required"])
 
     def test_groove_api_requires_pairing_and_saves_validated_grooves(self):
+        """Exercise the `groove api requires pairing and saves validated grooves`...
+
+        Returns:
+            None: No value is returned.
+        """
         tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
         tracks["kick"][0] = True
         payload = {
@@ -421,6 +599,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn("name must not be empty", json.loads(empty_name_body)["error"])
 
     def test_shutdown_requires_session_and_stops_server(self):
+        """Exercise the `shutdown requires session and stops server` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         unpaired, _, _ = self.request("/api/shutdown", method="POST", payload={})
         cross_origin, _, _ = self.request(
             "/api/shutdown", method="POST", payload={}, authenticated=True, origin="http://attacker.example"
@@ -435,6 +618,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertFalse(self.thread.is_alive())
 
     def test_serves_app_icon_for_browser_and_page_header(self):
+        """Exercise the `serves app icon for browser and page header` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         status, content_type, body = self.request("/icon.png")
         favicon_status, favicon_type, _ = self.request("/favicon.ico")
         touch_status, _, _ = self.request("/apple-touch-icon.png")
@@ -448,6 +636,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn(b'class="app-logo"', page)
 
     def test_groove_can_be_renamed_and_deleted_with_auth(self):
+        """Exercise the `groove can be renamed and deleted with auth` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
         payload = {"name": "Verse", "tracks": tracks, "levels": {i: 1.0 for i in INSTRUMENTS}}
         _, _, body = self.request("/api/grooves", method="POST", payload=payload, authenticated=True)
@@ -476,6 +669,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(json.loads(listed)["grooves"], [])
 
     def test_auto_groove_copy_endpoint_returns_a_sixteen_step_source_grid(self):
+        """Exercise the `auto groove copy endpoint returns a sixteen step source...
+
+        Returns:
+            None: No value is returned.
+        """
         unpaired, _, _ = self.request("/api/grooves/auto")
         status, _, body = self.request("/api/grooves/auto", authenticated=True)
 
@@ -484,6 +682,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(len(json.loads(body)["pattern"]), 8)
 
     def test_live_groove_draft_api_applies_unsaved_edits_only_to_selected_target(self):
+        """Exercise the `live groove draft api applies unsaved edits only to...
+
+        Returns:
+            None: No value is returned.
+        """
         tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
         tracks["snare"][0] = True
         levels = {instrument: 1.0 for instrument in INSTRUMENTS}
@@ -525,6 +728,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(self.controller.list_saved_grooves(), [])
 
     def test_preview_api_requires_pairing_origin_and_routes_preview_lifecycle(self):
+        """Exercise the `preview api requires pairing origin and routes preview...
+
+        Returns:
+            None: No value is returned.
+        """
         tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
         levels = {instrument: 1.0 for instrument in INSTRUMENTS}
         payload = {"tracks": tracks, "levels": levels, "tempo_bpm": 120}
@@ -603,6 +811,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn("Stop the live session", json.loads(blocked_body)["error"])
 
     def test_groove_api_reports_storage_errors(self):
+        """Exercise the `groove api reports storage errors` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         with patch.object(
             self.controller.groove_controller._groove_library,
             "list_grooves",
@@ -633,6 +846,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertIn("disk unavailable", json.loads(save_body)["error"])
 
     def test_pairing_pin_is_single_use_and_issues_a_bearer_session(self):
+        """Exercise the `pairing pin is single use and issues a bearer session` test...
+
+        Returns:
+            None: No value is returned.
+        """
         paired, _, paired_body = self.request(
             "/api/pair", method="POST", payload={"pin": "123456"}
         )
@@ -650,6 +868,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(invalid_token, 401)
 
     def test_pairing_rate_limit_and_cross_origin_mutations_are_rejected(self):
+        """Exercise the `pairing rate limit and cross origin mutations are rejected`...
+
+        Returns:
+            None: No value is returned.
+        """
         wrong_pins = [
             self.request("/api/pair", method="POST", payload={"pin": "000000"})[0]
             for _ in range(5)
@@ -669,6 +892,11 @@ class TestControlWebServer(unittest.TestCase):
         self.assertEqual(json.loads(body)["error"], "Cross-origin request rejected")
 
     def test_app_session_shutdown_invalidates_paired_tokens(self):
+        """Exercise the `app session shutdown invalidates paired tokens` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         self.server.invalidate_sessions()
 
         status, _, _ = self.request("/api/status", authenticated=True)

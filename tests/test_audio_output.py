@@ -1,3 +1,5 @@
+"""Tests for sample playback, output devices, and event scheduling."""
+
 import unittest
 
 import numpy as np
@@ -29,7 +31,20 @@ OUTPUT_DEVICES = [
 
 
 class FakeOutputStream:
+    """Provide a controllable audio stream substitute for output tests."""
     def __init__(self, callback, fail_start=False, **kwargs):
+        """Initialize the instance.
+
+        Args:
+            callback (object): Callback invoked when the corresponding audio
+                event occurs.
+            fail_start (object): Whether the test stream should simulate a start
+                failure.
+            kwargs (object): Additional keyword arguments forwarded to the operation.
+
+        Returns:
+            None: No value is returned.
+        """
         self.callback = callback
         self.fail_start = fail_start
         self.kwargs = kwargs
@@ -38,19 +53,40 @@ class FakeOutputStream:
         self.closed = False
 
     def start(self):
+        """Start the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         if self.fail_start:
             raise RuntimeError("output device busy")
         self.started = True
 
     def stop(self):
+        """Stop the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         self.stopped = True
 
     def close(self):
+        """Close the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         self.closed = True
 
 
 class TestGrooveEventMapping(unittest.TestCase):
+    """Test groove event mapping behavior."""
     def test_maps_pattern_cells_to_timed_instrument_events(self):
+        """Exercise the `maps pattern cells to timed instrument events` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         pattern = ("AK-H", "-S-H", "----", "K---", "A---", "-S-H", "----", "---H")
         events = pattern_to_events(pattern, tempo_bpm=120.0, bar_index=1)
 
@@ -63,6 +99,11 @@ class TestGrooveEventMapping(unittest.TestCase):
         self.assertEqual(events[-1].offset_seconds, 1.75)
 
     def test_extra_percussion_tokens_map_to_instruments(self):
+        """Exercise the `extra percussion tokens map to instruments` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         events = pattern_to_events(("RPtTDXB-",), tempo_bpm=120.0)
 
         self.assertEqual(
@@ -71,6 +112,11 @@ class TestGrooveEventMapping(unittest.TestCase):
         )
 
     def test_automatic_pattern_does_not_add_unrepresented_instruments(self):
+        """Exercise the `automatic pattern does not add unrepresented instruments`...
+
+        Returns:
+            None: No value is returned.
+        """
         pattern = ("AK-H", "-S-H", "----", "K---", "A---", "-S-H", "----", "---H")
         ordinary_bar = pattern_to_events(pattern, tempo_bpm=120.0, bar_index=1)
         variation_bar = pattern_to_events(pattern, tempo_bpm=120.0, bar_index=3)
@@ -80,10 +126,20 @@ class TestGrooveEventMapping(unittest.TestCase):
         self.assertEqual({event.instrument for event in variation_bar}, expected)
 
     def test_rejects_invalid_tempo(self):
+        """Exercise the `rejects invalid tempo` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         with self.assertRaises(ValueError):
             pattern_to_events(("K---",), tempo_bpm=0.0)
 
     def test_relaxed_feel_swings_offbeats_by_five_percent_of_a_beat(self):
+        """Exercise the `relaxed feel swings offbeats by five percent of a beat`...
+
+        Returns:
+            None: No value is returned.
+        """
         pattern = ("--H-",) * 8
         tight = pattern_to_events(pattern, tempo_bpm=96.0, feel="tight")
         relaxed = pattern_to_events(pattern, tempo_bpm=96.0, feel="relaxed")
@@ -94,6 +150,11 @@ class TestGrooveEventMapping(unittest.TestCase):
         self.assertEqual(relaxed[-1].offset_seconds, 2.21875)
 
     def test_sixteen_step_pattern_fills_one_bar_and_swings_only_eighth_offbeats(self):
+        """Exercise the `sixteen step pattern fills one bar and swings only eighth...
+
+        Returns:
+            None: No value is returned.
+        """
         pattern = tuple("K---" if index in {0, 1, 2, 6, 15} else "----" for index in range(16))
         tight = pattern_to_events(pattern, tempo_bpm=120.0)
         relaxed = pattern_to_events(pattern, tempo_bpm=120.0, feel="relaxed")
@@ -108,6 +169,11 @@ class TestGrooveEventMapping(unittest.TestCase):
         )
 
     def test_saved_groove_events_use_all_tracks_and_sixteenth_timing(self):
+        """Exercise the `saved groove events use all tracks and sixteenth timing`...
+
+        Returns:
+            None: No value is returned.
+        """
         tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
         tracks["kick"][0] = True
         tracks["snare"][1] = True
@@ -139,6 +205,11 @@ class TestGrooveEventMapping(unittest.TestCase):
         self.assertEqual(relaxed[-1].offset_seconds, 1.875)
 
     def test_maps_ghost_marker_to_quiet_snare_event(self):
+        """Exercise the `maps ghost marker to quiet snare event` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         events = pattern_to_events(("g---",), tempo_bpm=120.0, bar_index=1)
 
         self.assertEqual(len(events), 1)
@@ -146,6 +217,11 @@ class TestGrooveEventMapping(unittest.TestCase):
         self.assertEqual(events[0].velocity, 0.14)
 
     def test_ghost_variation_is_deterministic_and_preserves_core_pulse(self):
+        """Exercise the `ghost variation is deterministic and preserves core pulse`...
+
+        Returns:
+            None: No value is returned.
+        """
         pattern = tuple(generate_accompaniment("verse", "rock", "relaxed", 0.8))
         bars = [
             pattern_to_events(pattern, tempo_bpm=96.0, bar_index=bar_index, feel="relaxed")
@@ -173,7 +249,13 @@ class TestGrooveEventMapping(unittest.TestCase):
 
 
 class TestSampleMixer(unittest.TestCase):
+    """Test sample mixer behavior."""
     def test_mixes_overlapping_voices_with_velocity_and_master_level(self):
+        """Exercise the `mixes overlapping voices with velocity and master level`...
+
+        Returns:
+            None: No value is returned.
+        """
         samples = {
             "kick": np.full((6, 2), 0.8, dtype=np.float32),
             "snare": np.full((6, 2), 0.8, dtype=np.float32),
@@ -192,6 +274,11 @@ class TestSampleMixer(unittest.TestCase):
         self.assertLessEqual(float(np.max(np.abs(output))), 1.0)
 
     def test_muted_or_stopped_mixer_returns_silence(self):
+        """Exercise the `muted or stopped mixer returns silence` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         bank = SampleBank({"kick": np.ones((8, 2), dtype=np.float32)}, sample_rate=10, channels=2)
         mixer = SampleMixer(bank)
         event = (DrumEvent(0.0, "kick", 1.0),)
@@ -200,6 +287,11 @@ class TestSampleMixer(unittest.TestCase):
         self.assertFalse(np.any(mixer.render_events(event, 8, stopped=True)))
 
     def test_loads_and_converts_bundled_kit(self):
+        """Exercise the `loads and converts bundled kit` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         from pathlib import Path
 
         asset_directory = Path(__file__).parents[1] / "drum_companion" / "assets" / "drums"
@@ -215,10 +307,30 @@ class TestSampleMixer(unittest.TestCase):
 
 
 class TestSampleOutput(unittest.TestCase):
+    """Test sample output behavior."""
     def make_output(self, device=1, fail_start=False):
+        """Create output.
+
+        Args:
+            device (object): Audio device index or selected device.
+            fail_start (object): Whether the test stream should simulate a start
+                failure.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         self.streams = []
 
         def stream_factory(**kwargs):
+            """Handle stream factory.
+
+            Args:
+                kwargs (object): Additional keyword arguments forwarded to the
+                    operation.
+
+            Returns:
+                object: The result produced by this operation.
+            """
             stream = FakeOutputStream(fail_start=fail_start, **kwargs)
             self.streams.append(stream)
             return stream
@@ -237,6 +349,11 @@ class TestSampleOutput(unittest.TestCase):
         )
 
     def test_lists_only_output_devices(self):
+        """Exercise the `lists only output devices` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         devices = list_output_devices(device_query=lambda: OUTPUT_DEVICES)
 
         self.assertEqual(len(devices), 1)
@@ -244,6 +361,11 @@ class TestSampleOutput(unittest.TestCase):
         self.assertEqual(devices[0].name, "Speakers")
 
     def test_selects_output_and_callback_renders_scheduled_sample(self):
+        """Exercise the `selects output and callback renders scheduled sample` test...
+
+        Returns:
+            None: No value is returned.
+        """
         output = self.make_output()
         output.start()
         output.schedule(DrumEvent(0.0, "kick", 0.8), frame_position=1)
@@ -258,6 +380,11 @@ class TestSampleOutput(unittest.TestCase):
         self.assertTrue(np.allclose(rendered[1:], 0.4))
 
     def test_reports_unavailable_device_and_stream_start_failure(self):
+        """Exercise the `reports unavailable device and stream start failure` test...
+
+        Returns:
+            None: No value is returned.
+        """
         missing = self.make_output(device=7)
         with self.assertRaisesRegex(OutputError, "not available"):
             missing.start()
@@ -268,6 +395,11 @@ class TestSampleOutput(unittest.TestCase):
         self.assertTrue(self.streams[0].closed)
 
     def test_mute_and_master_level_do_not_change_frame_schedule(self):
+        """Exercise the `mute and master level do not change frame schedule` test...
+
+        Returns:
+            None: No value is returned.
+        """
         output = self.make_output()
         output.start()
         output.schedule(DrumEvent(0.0, "kick", 1.0), frame_position=0)
@@ -289,9 +421,23 @@ class TestSampleOutput(unittest.TestCase):
         self.assertEqual(output.frame_position, 12)
 
     def test_frame_gain_ramp_attenuates_samples_independently_of_master_level(self):
+        """Exercise the `frame gain ramp attenuates samples independently of master...
+
+        Returns:
+            None: No value is returned.
+        """
         streams = []
 
         def stream_factory(**kwargs):
+            """Handle stream factory.
+
+            Args:
+                kwargs (object): Additional keyword arguments forwarded to the
+                    operation.
+
+            Returns:
+                object: The result produced by this operation.
+            """
             stream = FakeOutputStream(**kwargs)
             streams.append(stream)
             return stream
@@ -322,6 +468,11 @@ class TestSampleOutput(unittest.TestCase):
         self.assertEqual(float(rendered[10, 0]), 0.0)
 
     def test_stop_clears_pending_events_and_closes_stream(self):
+        """Exercise the `stop clears pending events and closes stream` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         output = self.make_output()
         output.start()
         output.schedule(DrumEvent(0.0, "kick", 1.0), frame_position=20)
@@ -334,7 +485,13 @@ class TestSampleOutput(unittest.TestCase):
 
 
 class TestGrooveScheduler(unittest.TestCase):
+    """Test groove scheduler behavior."""
     def test_track_levels_and_intensity_scale_each_event_before_master_output(self):
+        """Exercise the `track levels and intensity scale each event before master...
+
+        Returns:
+            None: No value is returned.
+        """
         pattern = tuple("K---" if index == 0 else "S---" if index == 1 else "----" for index in range(16))
         levels = {instrument: 1.0 for instrument in INSTRUMENTS}
         levels.update({"kick": 0.25, "snare": 0.5, "closed_hat": 0.0})
@@ -368,6 +525,11 @@ class TestGrooveScheduler(unittest.TestCase):
         self.assertAlmostEqual(float(rendered[0, 0]), hits[0].velocity * 0.8 * 0.5)
 
     def test_zero_track_level_silences_only_that_instrument(self):
+        """Exercise the `zero track level silences only that instrument` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         pattern = ("K---", "S---") + ("----",) * 14
         levels = {instrument: 1.0 for instrument in INSTRUMENTS}
         levels["kick"] = 0.0
@@ -383,6 +545,11 @@ class TestGrooveScheduler(unittest.TestCase):
         self.assertEqual([(hit.instrument, hit.velocity) for hit in hits], [("kick", 0.0), ("snare", 0.72)])
 
     def test_sixteen_step_groove_is_scheduled_as_one_four_beat_bar(self):
+        """Exercise the `sixteen step groove is scheduled as one four beat bar` test...
+
+        Returns:
+            None: No value is returned.
+        """
         scheduler = GrooveScheduler(("K---",) * 16, tempo_bpm=120.0, sample_rate=1000)
 
         self.assertEqual(scheduler.bar_frame_count, 2000)
@@ -394,6 +561,11 @@ class TestGrooveScheduler(unittest.TestCase):
         self.assertEqual(first_bar[-1].frame_position, 1875)
 
     def test_relaxed_decision_reaches_future_scheduled_bars(self):
+        """Exercise the `relaxed decision reaches future scheduled bars` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         pattern = ("--H-",) * 8
         scheduler = GrooveScheduler(pattern, tempo_bpm=96.0, sample_rate=1000)
         decision = GrooveDecision(
@@ -417,6 +589,11 @@ class TestGrooveScheduler(unittest.TestCase):
         self.assertEqual(hat_frames[:4], [0, 344, 625, 969])
 
     def test_finds_next_scheduled_downbeat_after_current_frame(self):
+        """Exercise the `finds next scheduled downbeat after current frame` test...
+
+        Returns:
+            None: No value is returned.
+        """
         scheduler = GrooveScheduler(("K---",) * 8, tempo_bpm=120.0, sample_rate=1000)
         scheduler.schedule_next_bar()
         scheduler.schedule_next_bar()
@@ -425,6 +602,11 @@ class TestGrooveScheduler(unittest.TestCase):
         self.assertEqual(scheduler.next_downbeat_frame(2500), 4000)
 
     def test_tempo_change_only_changes_unscheduled_bars(self):
+        """Exercise the `tempo change only changes unscheduled bars` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         pattern = ("AK-H", "-S-H", "----", "K---", "A---", "-S-H", "----", "---H")
         scheduler = GrooveScheduler(pattern, tempo_bpm=120.0, sample_rate=1000)
         first_bar = scheduler.schedule_next_bar()
@@ -439,6 +621,11 @@ class TestGrooveScheduler(unittest.TestCase):
         self.assertEqual(next_bar[2].frame_position - next_bar[0].frame_position, 500)
 
     def test_groove_decisions_scale_future_sample_velocity_and_recover(self):
+        """Exercise the `groove decisions scale future sample velocity and recover`...
+
+        Returns:
+            None: No value is returned.
+        """
         pattern = ("AK-H", "-S-H", "----", "K---", "A---", "-S-H", "----", "---H")
         scheduler = GrooveScheduler(pattern, tempo_bpm=120.0, sample_rate=1000)
         reliable = GrooveDecision(120.0, 0.9, 0.8, pattern, False, True)
@@ -464,8 +651,15 @@ class TestGrooveScheduler(unittest.TestCase):
 
 
 class TestPlaybackCoordinator(unittest.TestCase):
+    """Test playback coordinator behavior."""
     def test_saved_groove_updates_only_future_bars_and_auto_remains_available(self):
+        """Exercise the `saved groove updates only future bars and auto remains...
+
+        Returns:
+            None: No value is returned.
+        """
         class FakeOutput:
+            """Provide a controllable audio output substitute for tests."""
             sample_bank = SampleBank(
                 {instrument: np.ones((4, 1), dtype=np.float32) for instrument in INSTRUMENTS},
                 sample_rate=1000,
@@ -473,13 +667,37 @@ class TestPlaybackCoordinator(unittest.TestCase):
             )
 
             def __init__(self):
+                """Initialize the instance.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.frame_position = 0
                 self.scheduled = []
 
             def schedule(self, event, frame_position):
+                """Schedule the associated resource or event.
+
+                Args:
+                    event (object): Scheduled audio event to process.
+                    frame_position (object): Output-frame position associated
+                        with the event.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.scheduled.append((frame_position, event))
 
         def make_saved_groove(name, active_steps):
+            """Create saved groove.
+
+            Args:
+                name (object): Name or identifier associated with the item.
+                active_steps (object): Active rhythmic steps for the track.
+
+            Returns:
+                object: The result produced by this operation.
+            """
             tracks = {instrument: [False] * 16 for instrument in INSTRUMENTS}
             for step, instrument in active_steps:
                 tracks[instrument][step] = True
@@ -524,20 +742,51 @@ class TestPlaybackCoordinator(unittest.TestCase):
         self.assertEqual(coordinator.scheduler.pattern, auto_pattern)
 
     def test_inactive_input_keeps_groove_scheduling_until_manual_stop(self):
+        """Exercise the `inactive input keeps groove scheduling until manual stop`...
+
+        Returns:
+            None: No value is returned.
+        """
         class FakeOutput:
+            """Provide a controllable audio output substitute for tests."""
             sample_bank = SampleBank(
                 {"kick": np.ones((4, 2), dtype=np.float32)}, sample_rate=1000, channels=2
             )
 
             def __init__(self):
+                """Initialize the instance.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.frame_position = 0
                 self.scheduled = []
                 self.scheduled_gain_ramps = []
 
             def schedule(self, event, frame_position):
+                """Schedule the associated resource or event.
+
+                Args:
+                    event (object): Scheduled audio event to process.
+                    frame_position (object): Output-frame position associated
+                        with the event.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.scheduled.append((frame_position, event))
 
             def schedule_gain_ramp(self, start_frame, end_frame, target_gain):
+                """Schedule gain ramp.
+
+                Args:
+                    start_frame (object): Output frame at which the operation starts.
+                    end_frame (object): Output frame at which it ends.
+                    target_gain (object): Target linear gain for the operation.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.scheduled_gain_ramps.append((start_frame, end_frame, target_gain))
 
         output = FakeOutput()
@@ -566,16 +815,37 @@ class TestPlaybackCoordinator(unittest.TestCase):
         self.assertEqual(output.scheduled_gain_ramps, [])
 
     def test_live_decisions_queue_future_bars_without_moving_existing_hits(self):
+        """Exercise the `live decisions queue future bars without moving existing...
+
+        Returns:
+            None: No value is returned.
+        """
         class FakeOutput:
+            """Provide a controllable audio output substitute for tests."""
             frame_position = 0
             sample_bank = SampleBank(
                 {"kick": np.ones((4, 2), dtype=np.float32)}, sample_rate=1000, channels=2
             )
 
             def __init__(self):
+                """Initialize the instance.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.scheduled = []
 
             def schedule(self, event, frame_position):
+                """Schedule the associated resource or event.
+
+                Args:
+                    event (object): Scheduled audio event to process.
+                    frame_position (object): Output-frame position associated
+                        with the event.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.scheduled.append((frame_position, event))
 
         pattern = ("AK-H", "-S-H", "----", "K---", "A---", "-S-H", "----", "---H")
@@ -597,6 +867,11 @@ class TestPlaybackCoordinator(unittest.TestCase):
         self.assertTrue(any(frame >= 4000 for frame, _ in output.scheduled[len(original) :]))
 
     def test_inactive_and_recovered_decisions_keep_audio_callback_playing(self):
+        """Exercise the `inactive and recovered decisions keep audio callback...
+
+        Returns:
+            None: No value is returned.
+        """
         devices = [{"name": "Speakers", "max_output_channels": 2, "default_samplerate": 1000}]
         bank = SampleBank(
             {
@@ -609,6 +884,15 @@ class TestPlaybackCoordinator(unittest.TestCase):
         streams = []
 
         def stream_factory(**kwargs):
+            """Handle stream factory.
+
+            Args:
+                kwargs (object): Additional keyword arguments forwarded to the
+                    operation.
+
+            Returns:
+                object: The result produced by this operation.
+            """
             stream = FakeOutputStream(**kwargs)
             streams.append(stream)
             return stream

@@ -1,3 +1,5 @@
+"""Immutable data models shared by audio analysis and groove generation."""
+
 from dataclasses import dataclass
 from math import isfinite
 
@@ -17,6 +19,11 @@ class AudioAnalysisObservation:
     discontinuity: bool = False
 
     def __post_init__(self) -> None:
+        """Validate the instance fields after initialization.
+
+        Returns:
+            None: No value is returned.
+        """
         if not isfinite(self.timestamp_seconds) or self.timestamp_seconds < 0:
             raise ValueError("timestamp_seconds must be finite and non-negative")
         if self.tempo_bpm is not None and (not isfinite(self.tempo_bpm) or self.tempo_bpm <= 0):

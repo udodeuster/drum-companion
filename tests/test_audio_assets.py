@@ -1,3 +1,5 @@
+"""Tests for bundled drum samples and their source manifest."""
+
 import json
 import unittest
 from pathlib import Path
@@ -10,7 +12,13 @@ ASSET_DIRECTORY = Path(__file__).parents[1] / "drum_companion" / "assets" / "dru
 
 
 class TestBundledDrumAssets(unittest.TestCase):
+    """Test bundled drum assets behavior."""
     def test_manifest_tracks_cc0_source_for_every_instrument(self):
+        """Exercise the `manifest tracks cc0 source for every instrument` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         manifest = json.loads((ASSET_DIRECTORY / "manifest.json").read_text(encoding="utf-8"))
         assets = manifest["assets"]
 
@@ -28,6 +36,11 @@ class TestBundledDrumAssets(unittest.TestCase):
             self.assertTrue(item["source_title"])
 
     def test_every_bundled_preview_decodes_offline(self):
+        """Exercise the `every bundled preview decodes offline` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         manifest = json.loads((ASSET_DIRECTORY / "manifest.json").read_text(encoding="utf-8"))
 
         for item in manifest["assets"]:

@@ -1,3 +1,5 @@
+"""Sample loading, audio-device output, and scheduled drum playback."""
+
 from __future__ import annotations
 
 import json
@@ -38,6 +40,7 @@ class OutputError(RuntimeError):
 
 @dataclass(frozen=True)
 class OutputDevice:
+    """Describe an available audio output device and its capabilities."""
     index: int
     name: str
     channels: int
@@ -45,6 +48,14 @@ class OutputDevice:
 
 
 def list_output_devices(device_query=sd.query_devices) -> list[OutputDevice]:
+    """List output devices.
+
+    Args:
+        device_query (object): Callable that returns the available audio devices.
+
+    Returns:
+        list[OutputDevice]: The result produced by this operation.
+    """
     return [
         OutputDevice(
             index=index,
@@ -58,6 +69,7 @@ def list_output_devices(device_query=sd.query_devices) -> list[OutputDevice]:
 
 
 class SampleBank:
+    """Hold decoded drum samples for use by the output mixer."""
     def __init__(
         self,
         samples: Mapping[str, np.ndarray],
@@ -65,6 +77,16 @@ class SampleBank:
         sample_rate: int,
         channels: int,
     ) -> None:
+        """Initialize the instance.
+
+        Args:
+            samples (Mapping[str, np.ndarray]): Sequence of audio samples to process.
+            sample_rate (int): Audio sampling rate in samples per second.
+            channels (int): Number of audio channels supported or requested.
+
+        Returns:
+            None: No value is returned.
+        """
         if sample_rate <= 0 or channels not in (1, 2):
             raise ValueError("sample_rate must be positive and channels must be mono or stereo")
         self.sample_rate = sample_rate
@@ -88,6 +110,17 @@ class SampleBank:
         sample_rate: int,
         channels: int,
     ) -> "SampleBank":
+        """Load starter kit.
+
+        Args:
+            asset_directory (str | Path): Directory containing bundled audio
+                sample assets.
+            sample_rate (int): Audio sampling rate in samples per second.
+            channels (int): Number of audio channels supported or requested.
+
+        Returns:
+            'SampleBank': The result produced by this operation.
+        """
         asset_directory = Path(asset_directory)
         manifest_path = asset_directory / "manifest.json"
         try:
@@ -143,7 +176,16 @@ class SampleBank:
 
 
 class SampleMixer:
+    """Mix scheduled drum events into output audio frames."""
     def __init__(self, sample_bank: SampleBank) -> None:
+        """Initialize the instance.
+
+        Args:
+            sample_bank (SampleBank): Loaded collection of drum samples.
+
+        Returns:
+            None: No value is returned.
+        """
         self.sample_bank = sample_bank
 
     def render_events(
@@ -155,6 +197,20 @@ class SampleMixer:
         muted: bool = False,
         stopped: bool = False,
     ) -> np.ndarray:
+        """Render events.
+
+        Args:
+            events (tuple[DrumEvent, ...] | list[DrumEvent]): Scheduled drum
+                events to mix or
+                process.
+            frame_count (int): Number of output audio frames.
+            master_level (float): Overall output level.
+            muted (bool): Whether audio output should be muted.
+            stopped (bool): Whether the associated stream has stopped.
+
+        Returns:
+            np.ndarray: The result produced by this operation.
+        """
         if frame_count < 0:
             raise ValueError("frame_count must be non-negative")
         if not 0.0 <= master_level <= 1.0:
@@ -180,6 +236,7 @@ class SampleMixer:
 
 
 class SampleOutput:
+    """Manage audio output and schedule samples on the selected device."""
     def __init__(
         self,
         device: int | None = None,
@@ -191,6 +248,24 @@ class SampleOutput:
         block_size: int = 512,
         max_pending_events: int = 256,
     ) -> None:
+        """Initialize the instance.
+
+        Args:
+            device (int | None): Audio device index or selected device.
+            asset_directory (str | Path | None): Directory containing bundled
+                audio sample
+                assets.
+            sample_bank (SampleBank | None): Loaded collection of drum samples.
+            device_query (object): Callable that returns the available audio devices.
+            stream_factory (object): Factory that creates the audio stream used
+                by the capture.
+            block_size (int): Number of audio frames per captured block.
+            max_pending_events (int): Maximum number of future events retained by
+                the scheduler.
+
+        Returns:
+            None: No value is returned.
+        """
         if block_size <= 0 or max_pending_events <= 0:
             raise ValueError("block_size and max_pending_events must be positive")
         self.device = device
@@ -214,37 +289,93 @@ class SampleOutput:
 
     @property
     def is_running(self) -> bool:
+        """Handle is running.
+
+        Returns:
+            bool: The result produced by this operation.
+        """
         return self._running
 
     @property
     def is_muted(self) -> bool:
+        """Handle is muted.
+
+        Returns:
+            bool: The result produced by this operation.
+        """
         return self._muted
 
     @property
     def master_level(self) -> float:
+        """Handle master level.
+
+        Returns:
+            float: The result produced by this operation.
+        """
         return self._master_level
 
     @property
     def frame_position(self) -> int:
+        """Handle frame position.
+
+        Returns:
+            int: The result produced by this operation.
+        """
         return self._frame_position
 
     @property
     def pending_event_count(self) -> int:
+        """Handle pending event count.
+
+        Returns:
+            int: The result produced by this operation.
+        """
         return self._events.qsize() + len(self._pending)
 
     @property
     def callback_error(self) -> str | None:
+        """Handle callback error.
+
+        Returns:
+            str | None: The result produced by this operation.
+        """
         return self._callback_error
 
     def set_master_level(self, level: float) -> None:
+        """Set master level.
+
+        Args:
+            level (float): Output level to apply.
+
+        Returns:
+            None: No value is returned.
+        """
         if not 0.0 <= level <= 1.0:
             raise ValueError("master level must be between 0.0 and 1.0")
         self._master_level = float(level)
 
     def set_muted(self, muted: bool) -> None:
+        """Set muted.
+
+        Args:
+            muted (bool): Whether audio output should be muted.
+
+        Returns:
+            None: No value is returned.
+        """
         self._muted = bool(muted)
 
     def schedule_gain_ramp(self, start_frame: int, end_frame: int, target_gain: float) -> None:
+        """Schedule gain ramp.
+
+        Args:
+            start_frame (int): Output frame at which the operation starts.
+            end_frame (int): Output frame at which it ends.
+            target_gain (float): Target linear gain for the operation.
+
+        Returns:
+            None: No value is returned.
+        """
         if start_frame < 0 or end_frame <= start_frame:
             raise ValueError("gain ramp frames must be non-negative and end after start")
         if not np.isfinite(target_gain) or not 0.0 <= target_gain <= 1.0:
@@ -269,6 +400,17 @@ class SampleOutput:
         frame_position: int,
         segments: tuple[tuple[int, int, float, float], ...],
     ) -> float:
+        """Handle gain at frame.
+
+        Args:
+            frame_position (int): Output-frame position associated with the event.
+            segments (tuple[tuple[int, int, float, float], ...]): Audio segments
+                or event
+                intervals to process.
+
+        Returns:
+            float: The result produced by this operation.
+        """
         gain = 1.0
         for start_frame, end_frame, start_gain, end_gain in segments:
             if frame_position < start_frame:
@@ -280,6 +422,11 @@ class SampleOutput:
         return gain
 
     def start(self) -> None:
+        """Start the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         devices = list_output_devices(self._device_query)
         if not devices:
             raise OutputError("No audio output devices are available")
@@ -319,6 +466,15 @@ class SampleOutput:
             raise OutputError(f"Unable to start audio output: {exc}") from exc
 
     def schedule(self, event: DrumEvent, frame_position: int) -> None:
+        """Schedule the associated resource or event.
+
+        Args:
+            event (DrumEvent): Scheduled audio event to process.
+            frame_position (int): Output-frame position associated with the event.
+
+        Returns:
+            None: No value is returned.
+        """
         if not self._running:
             raise OutputError("Audio output is not running")
         if frame_position < self._frame_position:
@@ -329,6 +485,11 @@ class SampleOutput:
             raise OutputError("Audio event queue is full") from exc
 
     def stop(self) -> None:
+        """Stop the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         self._running = False
         self._close_stream()
         self._gain_segments = ()
@@ -341,6 +502,18 @@ class SampleOutput:
                 break
 
     def _audio_callback(self, outdata: np.ndarray, frames: int, time_info: object, status: object) -> None:
+        """Handle audio callback.
+
+        Args:
+            outdata (np.ndarray): Output audio buffer filled by the audio callback.
+            frames (int): Audio frames to process or render.
+            time_info (object): Audio callback timing metadata provided by the
+                audio backend.
+            status (object): HTTP status code or controller status to report.
+
+        Returns:
+            None: No value is returned.
+        """
         outdata.fill(0.0)
         if not self._running or self.sample_bank is None:
             return
@@ -398,6 +571,11 @@ class SampleOutput:
             self._callback_error = str(exc)
 
     def _close_stream(self) -> None:
+        """Handle close stream.
+
+        Returns:
+            None: No value is returned.
+        """
         stream, self._stream = self._stream, None
         if stream is not None:
             try:
@@ -416,6 +594,17 @@ class PlaybackCoordinator:
         horizon_seconds: float = 1.0,
         lead_in_seconds: float = 0.1,
     ) -> None:
+        """Initialize the instance.
+
+        Args:
+            output (SampleOutput): Audio output instance or destination.
+            horizon_seconds (float): Look-ahead scheduling horizon in seconds.
+            lead_in_seconds (float): Delay before the first scheduled event, in
+                seconds.
+
+        Returns:
+            None: No value is returned.
+        """
         if horizon_seconds <= 0 or lead_in_seconds < 0:
             raise ValueError("horizon must be positive and lead-in non-negative")
         self.output = output
@@ -424,6 +613,15 @@ class PlaybackCoordinator:
         self.scheduler: GrooveScheduler | None = None
 
     def update(self, decision: GrooveDecision, groove: SavedGroove | None = None) -> int:
+        """Handle update.
+
+        Args:
+            decision (GrooveDecision): Groove decision to apply.
+            groove (SavedGroove | None): Groove data to process.
+
+        Returns:
+            int: The result produced by this operation.
+        """
         if decision.tempo_bpm is None and self.scheduler is None:
             return 0
         if self.output.sample_bank is None:

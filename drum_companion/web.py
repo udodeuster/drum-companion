@@ -1,3 +1,5 @@
+"""Local web interface and HTTP handlers for live groove controls."""
+
 from __future__ import annotations
 
 import hmac
@@ -27,10 +29,22 @@ _ICON_ROUTES = {
 
 
 class ControlHTTPServer(ThreadingHTTPServer):
+    """Serve the local control interface and its session state."""
     allow_reuse_address = True
     daemon_threads = True
 
     def __init__(self, address, controller: LiveAudioController, pairing_pin: str) -> None:
+        """Initialize the instance.
+
+        Args:
+            address (object): Network address used to bind the server.
+            controller (LiveAudioController): Controller instance under test or
+                control.
+            pairing_pin (str): The pairing pin used by this operation.
+
+        Returns:
+            None: No value is returned.
+        """
         super().__init__(address, ControlRequestHandler)
         self.controller = controller
         self.pairing_pin = pairing_pin
@@ -41,18 +55,34 @@ class ControlHTTPServer(ThreadingHTTPServer):
         self.pairing_lock = Lock()
 
     def invalidate_sessions(self) -> None:
+        """Handle invalidate sessions.
+
+        Returns:
+            None: No value is returned.
+        """
         with self.pairing_lock:
             self.sessions.clear()
 
     def server_close(self) -> None:
+        """Handle server close.
+
+        Returns:
+            None: No value is returned.
+        """
         self.invalidate_sessions()
         super().server_close()
 
 
 class ControlRequestHandler(BaseHTTPRequestHandler):
+    """Handle HTTP requests for the local live-control interface."""
     server: ControlHTTPServer
 
     def do_GET(self) -> None:
+        """Handle an HTTP GET request.
+
+        Returns:
+            None: No value is returned.
+        """
         if not self._private_client():
             self._send_json(403, {"error": "Only private-network clients are allowed"})
             return
@@ -96,6 +126,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "Not found"})
 
     def do_POST(self) -> None:
+        """Handle an HTTP POST request.
+
+        Returns:
+            None: No value is returned.
+        """
         if not self._private_client():
             self._discard_request_body()
             self.close_connection = True
@@ -154,6 +189,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self._send_json(409, {"error": str(exc)})
 
     def do_PATCH(self) -> None:
+        """Handle do patch.
+
+        Returns:
+            None: No value is returned.
+        """
         if not self._private_client():
             self._discard_request_body()
             self.close_connection = True
@@ -194,6 +234,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self._send_json(409, {"error": str(exc)})
 
     def do_DELETE(self) -> None:
+        """Handle do delete.
+
+        Returns:
+            None: No value is returned.
+        """
         if not self._private_client():
             self.close_connection = True
             self._send_json(403, {"error": "Only private-network clients are allowed"})
@@ -219,6 +264,14 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(exc)})
 
     def _pair(self, payload: dict[str, object]) -> None:
+        """Handle pair.
+
+        Args:
+            payload (dict[str, object]): Request data or response payload to process.
+
+        Returns:
+            None: No value is returned.
+        """
         with self.server.pairing_lock:
             if self.server.pairing_used:
                 self._send_json(409, {"error": "The pairing PIN has already been used"})
@@ -237,6 +290,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self._send_json(200, {"token": token})
 
     def _host_session(self) -> None:
+        """Handle host session.
+
+        Returns:
+            None: No value is returned.
+        """
         if not self._loopback_client():
             self._send_json(403, {"error": "PIN-free access is only available on the host computer"})
             return
@@ -246,6 +304,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self._send_json(200, {"token": token})
 
     def _require_session(self) -> bool:
+        """Check session authentication and send an error when required.
+
+        Returns:
+            bool: The result produced by this operation.
+        """
         authorization = self.headers.get("Authorization", "")
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() == "bearer" and token in self.server.sessions:
@@ -257,6 +320,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         return False
 
     def _discard_request_body(self) -> None:
+        """Handle discard request body.
+
+        Returns:
+            None: No value is returned.
+        """
         length_text = self.headers.get("Content-Length")
         if length_text is None:
             return
@@ -273,6 +341,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
             self.close_connection = True
 
     def _private_client(self) -> bool:
+        """Check whether the request comes from an allowed private-network client.
+
+        Returns:
+            bool: The result produced by this operation.
+        """
         try:
             address = ipaddress.ip_address(self.client_address[0].split("%", 1)[0])
         except ValueError:
@@ -282,6 +355,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         return address.is_private or address.is_loopback
 
     def _loopback_client(self) -> bool:
+        """Check whether the request originates on the local machine.
+
+        Returns:
+            bool: The result produced by this operation.
+        """
         try:
             address = ipaddress.ip_address(self.client_address[0].split("%", 1)[0])
         except ValueError:
@@ -291,6 +369,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         return address.is_loopback
 
     def _check_origin(self) -> bool:
+        """Handle check origin.
+
+        Returns:
+            bool: The result produced by this operation.
+        """
         origin = self.headers.get("Origin")
         if not origin:
             return True
@@ -298,6 +381,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         return parsed.scheme == "http" and parsed.netloc.casefold() == self.headers.get("Host", "").casefold()
 
     def _read_json(self) -> dict[str, object] | None:
+        """Handle read json.
+
+        Returns:
+            dict[str, object] | None: The result produced by this operation.
+        """
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
@@ -317,6 +405,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         return payload
 
     def _serve_page(self) -> None:
+        """Serve the local control page.
+
+        Returns:
+            None: No value is returned.
+        """
         page = Path(__file__).parent / "assets" / "control" / "index.html"
         try:
             content = page.read_bytes()
@@ -331,6 +424,14 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def _serve_icon(self, filename: str) -> None:
+        """Serve a bundled icon file.
+
+        Args:
+            filename (str): Name of the audio asset file.
+
+        Returns:
+            None: No value is returned.
+        """
         try:
             content = (Path(__file__).parent / "assets" / "icon" / filename).read_bytes()
         except OSError:
@@ -345,6 +446,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def _send_pairing_qr(self) -> None:
+        """Send the host pairing details as an SVG QR code.
+
+        Returns:
+            None: No value is returned.
+        """
         if not self.server.phone_url:
             self._send_json(503, {"error": "No private-network phone address is available"})
             return
@@ -360,6 +466,15 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(svg)
 
     def _send_json(self, status: int, payload: dict[str, object]) -> None:
+        """Send a JSON response with the given status code and data.
+
+        Args:
+            status (int): HTTP status code or controller status to report.
+            payload (dict[str, object]): Request data or response payload to process.
+
+        Returns:
+            None: No value is returned.
+        """
         content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -369,6 +484,11 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def _set_security_headers(self) -> None:
+        """Handle set security headers.
+
+        Returns:
+            None: No value is returned.
+        """
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
@@ -379,6 +499,15 @@ class ControlRequestHandler(BaseHTTPRequestHandler):
         )
 
     def log_message(self, format: str, *args: object) -> None:
+        """Handle log message.
+
+        Args:
+            format (str): Audio format expected for the asset.
+            args (object): Parsed command-line arguments for the requested operation.
+
+        Returns:
+            None: No value is returned.
+        """
         return
 
 
@@ -390,6 +519,18 @@ def create_control_server(
     port: int = 8765,
     phone_url: str = "",
 ) -> ControlHTTPServer:
+    """Create control server.
+
+    Args:
+        controller (LiveAudioController): Controller instance under test or control.
+        pairing_pin (str): The pairing pin used by this operation.
+        host (str): Host address for the local server.
+        port (int): Port on which the local server should listen.
+        phone_url (str): URL displayed for pairing a phone with the host.
+
+    Returns:
+        ControlHTTPServer: The result produced by this operation.
+    """
     server = ControlHTTPServer((host, port), controller, pairing_pin)
     server.phone_url = phone_url
     return server

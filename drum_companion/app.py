@@ -1,3 +1,5 @@
+"""Command-line interface and runtime orchestration for Drum Companion."""
+
 from __future__ import annotations
 
 import argparse
@@ -23,6 +25,16 @@ from drum_companion.web import create_control_server
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse args.
+
+    Args:
+        argv (list[str] | None): Command-line arguments; process arguments are
+            used when
+            omitted.
+
+    Returns:
+        argparse.Namespace: The result produced by this operation.
+    """
     parser = argparse.ArgumentParser(description="Drum companion scaffold for solo guitar and voice performances.")
     parser.add_argument("--tempo", type=float, default=92.0, help="Detected lead tempo in BPM.")
     parser.add_argument("--voice-energy", type=float, default=0.7, help="Voice intensity from 0.0 to 1.0.")
@@ -65,6 +77,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def run_interactive() -> int:
+    """Run interactive.
+
+    Returns:
+        int: The result produced by this operation.
+    """
     while True:
         phrase = input("Phrase (verse/chorus/bridge) [verse]: ") or "verse"
         style = input("Style (rock/folk/indie) [rock]: ") or "rock"
@@ -83,7 +100,15 @@ def run_interactive() -> int:
 
 
 def apply_playback_key(key: str, output: SampleOutput) -> bool:
-    """Apply one live console key; return True when playback should stop."""
+    """Apply one live console key; return True when playback should stop.
+
+    Args:
+        key (str): Control key or mapping key to process.
+        output (SampleOutput): Audio output instance or destination.
+
+    Returns:
+        bool: The result produced by this operation.
+    """
     normalized = key.lower()
     if normalized == "m":
         output.set_muted(not output.is_muted)
@@ -100,6 +125,14 @@ def apply_playback_key(key: str, output: SampleOutput) -> bool:
 
 
 def poll_playback_controls(output: SampleOutput) -> bool:
+    """Poll playback controls.
+
+    Args:
+        output (SampleOutput): Audio output instance or destination.
+
+    Returns:
+        bool: The result produced by this operation.
+    """
     try:
         import msvcrt
     except ImportError:
@@ -128,6 +161,25 @@ def run_live(
     min_tempo_bpm: int = 40,
     max_tempo_bpm: int = 140,
 ) -> int:
+    """Run live.
+
+    Args:
+        device (int | None): Audio device index or selected device.
+        style (str): Drum-groove style name.
+        feel (str): Timing feel used for the groove.
+        intensity (float): Normalized groove intensity between zero and one.
+        phrase (str): Musical phrase or section name.
+        play_drums (bool): Whether drum playback is enabled.
+        output_device (int | None): Audio output device to use.
+        master_level (float): Overall output level.
+        onset_timeout_bars (int): Number of bars allowed without an onset before
+            timing out.
+        min_tempo_bpm (int): Minimum accepted tempo in beats per minute.
+        max_tempo_bpm (int): Maximum accepted tempo in beats per minute.
+
+    Returns:
+        int: The result produced by this operation.
+    """
     capture = MicrophoneCapture(device=device)
     analyzer: AudioAnalyzer | None = None
     follower = GrooveFollower(
@@ -199,6 +251,15 @@ def run_live(
 
 
 def _check_tempo_range(args: argparse.Namespace) -> None:
+    """Handle check tempo range.
+
+    Args:
+        args (argparse.Namespace): Parsed command-line arguments for the requested
+            operation.
+
+    Returns:
+        None: No value is returned.
+    """
     if not 30 <= args.min_tempo <= 300 or not 30 <= args.max_tempo <= 300:
         raise SystemExit("--min-tempo and --max-tempo must be between 30 and 300")
     if args.max_tempo < 2 * args.min_tempo:
@@ -206,6 +267,15 @@ def _check_tempo_range(args: argparse.Namespace) -> None:
 
 
 def run_web(args: argparse.Namespace) -> int:
+    """Run web.
+
+    Args:
+        args (argparse.Namespace): Parsed command-line arguments for the requested
+            operation.
+
+    Returns:
+        int: The result produced by this operation.
+    """
     _check_tempo_range(args)
     if args.web_port < 1 or args.web_port > 65535:
         raise SystemExit("--web-port must be between 1 and 65535")
@@ -268,6 +338,11 @@ def run_web(args: argparse.Namespace) -> int:
 
 
 def _private_network_addresses() -> list[str]:
+    """Handle private network addresses.
+
+    Returns:
+        list[str]: The result produced by this operation.
+    """
     try:
         addresses = socket.gethostbyname_ex(socket.gethostname())[2]
     except OSError:
@@ -282,6 +357,14 @@ def _private_network_addresses() -> list[str]:
 
 
 def _preferred_private_address(addresses: list[str]) -> str | None:
+    """Handle preferred private address.
+
+    Args:
+        addresses (list[str]): Network addresses to inspect.
+
+    Returns:
+        str | None: The result produced by this operation.
+    """
     if not addresses:
         return None
     probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -298,6 +381,16 @@ def _preferred_private_address(addresses: list[str]) -> str | None:
 
 
 def run_cli(argv: list[str] | None = None) -> int:
+    """Run cli.
+
+    Args:
+        argv (list[str] | None): Command-line arguments; process arguments are
+            used when
+            omitted.
+
+    Returns:
+        int: The result produced by this operation.
+    """
     args = parse_args(argv)
     if args.list_inputs:
         devices = list_input_devices()

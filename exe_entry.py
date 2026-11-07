@@ -1,3 +1,5 @@
+"""Windowed entry point for launching the app and flushing output streams."""
+
 import os
 import sys
 

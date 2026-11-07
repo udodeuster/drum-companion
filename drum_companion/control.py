@@ -1,3 +1,5 @@
+"""Live audio-session controls and runtime settings coordination."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
@@ -30,6 +32,7 @@ class DeviceRestartRequired(LiveControlError):
 
 @dataclass(frozen=True)
 class LiveSettings:
+    """Store validated settings for a live audio session."""
     input_device: int | None = None
     output_device: int | None = None
     selected_groove_id: str | None = None
@@ -61,6 +64,23 @@ class LiveAudioController:
         output_factory: Callable[..., SampleOutput] = SampleOutput,
         groove_library: GrooveLibrary | None = None,
     ) -> None:
+        """Initialize the instance.
+
+        Args:
+            settings (LiveSettings | None): Runtime settings to apply.
+            capture_factory (Callable[..., MicrophoneCapture]): Factory that
+                creates the
+                microphone capture source.
+            output_factory (Callable[..., SampleOutput]): Factory that creates
+                the audio output
+                instance.
+            groove_library (GrooveLibrary | None): Persistent library used to
+                load and save
+                grooves.
+
+        Returns:
+            None: No value is returned.
+        """
         self._lock = RLock()
         self._settings = settings or LiveSettings()
         self._capture_factory = capture_factory
@@ -94,10 +114,20 @@ class LiveAudioController:
 
     @property
     def settings(self) -> LiveSettings:
+        """Handle settings.
+
+        Returns:
+            LiveSettings: The result produced by this operation.
+        """
         with self._lock:
             return self._settings
 
     def start(self) -> None:
+        """Start the associated resource or event.
+
+        Returns:
+            None: No value is returned.
+        """
         with self._lock:
             if self._preview_thread is not None and self._preview_thread.is_alive():
                 raise LiveControlError("Stop the groove preview before starting the live session")
@@ -118,6 +148,14 @@ class LiveAudioController:
             self._thread.start()
 
     def stop(self, timeout: float = 5.0) -> None:
+        """Stop the associated resource or event.
+
+        Args:
+            timeout (float): Maximum time to wait, in seconds.
+
+        Returns:
+            None: No value is returned.
+        """
         with self._lock:
             thread = self._thread
             if thread is None or not thread.is_alive():
@@ -132,6 +170,15 @@ class LiveAudioController:
             raise LiveControlError("The live audio worker did not stop in time")
 
     def start_preview(self, values: Mapping[str, object]) -> dict[str, object]:
+        """Start preview.
+
+        Args:
+            values (Mapping[str, object]): Settings or field values to apply to
+                the operation.
+
+        Returns:
+            dict[str, object]: The result produced by this operation.
+        """
         draft = self._normalize_preview_draft(values)
         tempo_bpm = self._normalize_preview_tempo(values.get("tempo_bpm"))
         with self._lock:
@@ -159,6 +206,15 @@ class LiveAudioController:
         return self.snapshot()
 
     def update_preview(self, values: Mapping[str, object]) -> dict[str, object]:
+        """Update preview.
+
+        Args:
+            values (Mapping[str, object]): Settings or field values to apply to
+                the operation.
+
+        Returns:
+            dict[str, object]: The result produced by this operation.
+        """
         draft = self._normalize_preview_draft(values)
         tempo_bpm = self._normalize_preview_tempo(values.get("tempo_bpm"))
         with self._lock:
@@ -170,6 +226,14 @@ class LiveAudioController:
         return self.snapshot()
 
     def stop_preview(self, timeout: float = 5.0) -> dict[str, object]:
+        """Stop preview.
+
+        Args:
+            timeout (float): Maximum time to wait, in seconds.
+
+        Returns:
+            dict[str, object]: The result produced by this operation.
+        """
         with self._lock:
             thread = self._preview_thread
             if thread is None or not thread.is_alive():
@@ -185,6 +249,15 @@ class LiveAudioController:
         return self.snapshot()
 
     def update_settings(self, values: Mapping[str, object]) -> dict[str, object]:
+        """Update settings.
+
+        Args:
+            values (Mapping[str, object]): Settings or field values to apply to
+                the operation.
+
+        Returns:
+            dict[str, object]: The result produced by this operation.
+        """
         unknown = set(values) - self._setting_fields
         if unknown:
             raise ValueError(f"Unsupported setting(s): {', '.join(sorted(unknown))}")
@@ -220,6 +293,15 @@ class LiveAudioController:
         return asdict(settings)
 
     def update_live_groove_draft(self, values: Mapping[str, object]) -> None:
+        """Update live groove draft.
+
+        Args:
+            values (Mapping[str, object]): Settings or field values to apply to
+                the operation.
+
+        Returns:
+            None: No value is returned.
+        """
         if set(values) != {"selected_groove_id", "tracks", "levels"}:
             raise ValueError("A live groove draft must contain selected_groove_id, tracks, and levels")
         target = self._normalize_setting("selected_groove_id", values["selected_groove_id"])
@@ -233,6 +315,14 @@ class LiveAudioController:
             self._live_groove_draft_target = target
 
     def _groove_for_playback(self, settings: LiveSettings) -> SavedGroove | None:
+        """Handle groove for playback.
+
+        Args:
+            settings (LiveSettings): Runtime settings to apply.
+
+        Returns:
+            SavedGroove | None: The result produced by this operation.
+        """
         with self._lock:
             if self._live_groove_draft_target == settings.selected_groove_id:
                 draft = self._live_groove_draft
@@ -248,6 +338,11 @@ class LiveAudioController:
         return groove
 
     def snapshot(self) -> dict[str, object]:
+        """Return the current controller state and settings snapshot.
+
+        Returns:
+            dict[str, object]: The result produced by this operation.
+        """
         with self._lock:
             preview_tempo = self._preview_tempo_bpm
             if preview_tempo is None:
@@ -280,9 +375,19 @@ class LiveAudioController:
             }
 
     def list_saved_grooves(self) -> list[dict[str, object]]:
+        """List saved grooves.
+
+        Returns:
+            list[dict[str, object]]: The result produced by this operation.
+        """
         return [groove.to_dict() for groove in self._groove_library.list_grooves()]
 
     def automatic_groove_pattern(self) -> list[str]:
+        """Handle automatic groove pattern.
+
+        Returns:
+            list[str]: The result produced by this operation.
+        """
         with self._lock:
             current = self._status["pattern"]
             settings = self._settings
@@ -296,6 +401,15 @@ class LiveAudioController:
         )
 
     def save_saved_groove(self, values: Mapping[str, object]) -> dict[str, object]:
+        """Save saved groove.
+
+        Args:
+            values (Mapping[str, object]): Settings or field values to apply to
+                the operation.
+
+        Returns:
+            dict[str, object]: The result produced by this operation.
+        """
         allowed = {"id", "name", "tracks", "levels"}
         if set(values) - allowed or not {"name", "tracks", "levels"}.issubset(values):
             raise ValueError("A groove must contain name, tracks, and levels, with only an optional id")
@@ -318,12 +432,21 @@ class LiveAudioController:
         return groove.to_dict()
 
     def delete_saved_groove(self, groove_id: object) -> dict[str, object]:
+        """Delete saved groove.
+
+        Args:
+            groove_id (object): Unique identifier of the saved groove.
+
+        Returns:
+            dict[str, object]: The result produced by this operation.
+        """
         if not isinstance(groove_id, str):
             raise ValueError("A groove id is required")
         with self._lock:
             if self._groove_library.get_groove(groove_id) is None:
                 raise LookupError("The saved groove does not exist")
-            # Fall back to Auto before deleting so a running session never sees a missing groove.
+            # Fall back to Auto before deleting so a running session never sees a
+            # missing groove.
             if self._settings.selected_groove_id == groove_id:
                 self._settings = replace(self._settings, selected_groove_id=None)
             self._groove_library.delete_groove(groove_id)
@@ -331,6 +454,15 @@ class LiveAudioController:
 
     @staticmethod
     def _normalize_preview_draft(values: Mapping[str, object]) -> SavedGroove:
+        """Handle normalize preview draft.
+
+        Args:
+            values (Mapping[str, object]): Settings or field values to apply to
+                the operation.
+
+        Returns:
+            SavedGroove: The result produced by this operation.
+        """
         if set(values) - {"tracks", "levels", "tempo_bpm"} or not {
             "tracks",
             "levels",
@@ -344,6 +476,14 @@ class LiveAudioController:
 
     @staticmethod
     def _normalize_preview_tempo(value: object) -> float | None:
+        """Handle normalize preview tempo.
+
+        Args:
+            value (object): Value to validate or use.
+
+        Returns:
+            float | None: The result produced by this operation.
+        """
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -354,6 +494,11 @@ class LiveAudioController:
         return tempo_bpm
 
     def _run_preview(self) -> None:
+        """Handle run preview.
+
+        Returns:
+            None: No value is returned.
+        """
         output: SampleOutput | None = None
         try:
             settings = self.settings
@@ -427,12 +572,22 @@ class LiveAudioController:
                     self._preview_state = "stopped"
 
     def _preview_values(self) -> tuple[SavedGroove, float]:
+        """Handle preview values.
+
+        Returns:
+            tuple[SavedGroove, float]: The result produced by this operation.
+        """
         with self._lock:
             if self._preview_draft is None or self._preview_tempo_bpm is None:
                 raise LiveControlError("The groove preview has no draft or tempo")
             return self._preview_draft, self._preview_tempo_bpm
 
     def _run(self) -> None:
+        """Handle run.
+
+        Returns:
+            None: No value is returned.
+        """
         capture: MicrophoneCapture | None = None
         output: SampleOutput | None = None
         try:
@@ -537,6 +692,15 @@ class LiveAudioController:
 
     @staticmethod
     def _stop_capture(capture: MicrophoneCapture) -> None:
+        """Handle stop capture.
+
+        Args:
+            capture (MicrophoneCapture): Audio capture instance to start, read
+                from, or stop.
+
+        Returns:
+            None: No value is returned.
+        """
         try:
             capture.stop()
         except Exception:
@@ -544,6 +708,14 @@ class LiveAudioController:
 
     @staticmethod
     def _stop_output(output: SampleOutput) -> None:
+        """Handle stop output.
+
+        Args:
+            output (SampleOutput): Audio output instance or destination.
+
+        Returns:
+            None: No value is returned.
+        """
         try:
             output.stop()
         except Exception:
@@ -551,6 +723,15 @@ class LiveAudioController:
 
     @classmethod
     def _normalize_setting(cls, name: str, value: object) -> object:
+        """Handle normalize setting.
+
+        Args:
+            name (str): Name or identifier associated with the item.
+            value (object): Value to validate or use.
+
+        Returns:
+            object: The result produced by this operation.
+        """
         if name in {"input_device", "output_device"}:
             if value is None:
                 return None
@@ -608,6 +789,14 @@ class LiveAudioController:
 
     @classmethod
     def _validate_settings(cls, settings: LiveSettings) -> None:
+        """Handle validate settings.
+
+        Args:
+            settings (LiveSettings): Runtime settings to apply.
+
+        Returns:
+            None: No value is returned.
+        """
         for name, value in asdict(settings).items():
             cls._normalize_setting(name, value)
         if settings.max_tempo_bpm < 2 * settings.min_tempo_bpm:

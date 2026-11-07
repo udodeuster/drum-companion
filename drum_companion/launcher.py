@@ -1,3 +1,5 @@
+"""Startup helpers for console and windowed Drum Companion launches."""
+
 from __future__ import annotations
 
 import os
@@ -7,13 +9,22 @@ from pathlib import Path
 
 
 def log_path() -> Path:
+    """Return the application log file path.
+
+    Returns:
+        Path: The result produced by this operation.
+    """
     base = os.environ.get("LOCALAPPDATA")
     directory = Path(base) / "DrumCompanion" if base else Path.home() / ".drum-companion"
     return directory / "app.log"
 
 
 def ensure_streams() -> None:
-    """Windowed executables have no console; give print() somewhere to go."""
+    """Windowed executables have no console; give print() somewhere to go.
+
+    Returns:
+        None: No value is returned.
+    """
     if sys.stdout is not None and sys.stderr is not None:
         return
     path = log_path()
@@ -26,6 +37,7 @@ def ensure_streams() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Launch the application and return its exit code."""
     ensure_streams()
     if argv is None:
         argv = sys.argv[1:] or ["--web", "--open-browser"]

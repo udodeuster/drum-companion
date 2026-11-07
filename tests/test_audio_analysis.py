@@ -1,3 +1,5 @@
+"""Tests for audio analysis, tempo tracking, and end-to-end rendering."""
+
 import tempfile
 import unittest
 from dataclasses import replace
@@ -15,7 +17,13 @@ from drum_companion.models import AudioAnalysisObservation
 
 
 class TempoRangeTests(unittest.TestCase):
+    """Represent tempo range tests."""
     def test_tempo_range_validation(self):
+        """Exercise the `tempo range validation` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         analyzer = AudioAnalyzer(16000, min_tempo_bpm=40, max_tempo_bpm=140)
         self.assertEqual((analyzer.min_tempo_bpm, analyzer.max_tempo_bpm), (40.0, 140.0))
         with self.assertRaises(ValueError):
@@ -23,6 +31,14 @@ class TempoRangeTests(unittest.TestCase):
 
 
 def make_pulse_track(sample_rate: int = 22050) -> np.ndarray:
+    """Create pulse track.
+
+    Args:
+        sample_rate (int): Audio sampling rate in samples per second.
+
+    Returns:
+        np.ndarray: The result produced by this operation.
+    """
     duration_seconds = 12.0
     signal = np.zeros(int(sample_rate * duration_seconds), dtype=np.float32)
     click_length = int(sample_rate * 0.025)
@@ -38,6 +54,14 @@ def make_pulse_track(sample_rate: int = 22050) -> np.ndarray:
 
 
 def make_guitar_strum_track(sample_rate: int = 22050) -> tuple[np.ndarray, tuple[float, ...]]:
+    """Create guitar strum track.
+
+    Args:
+        sample_rate (int): Audio sampling rate in samples per second.
+
+    Returns:
+        tuple[np.ndarray, tuple[float, ...]]: The result produced by this operation.
+    """
     onset_times = tuple(float(value) for value in np.arange(0.25, 4.0, 0.5))
     signal = np.zeros(sample_rate * 8, dtype=np.float32)
     frequencies = (82.4, 110.0, 146.8, 196.0, 246.9, 329.6)
@@ -55,6 +79,14 @@ def make_guitar_strum_track(sample_rate: int = 22050) -> tuple[np.ndarray, tuple
 
 
 def make_vocal_phrase_track(sample_rate: int = 22050) -> tuple[np.ndarray, tuple[float, ...]]:
+    """Create vocal phrase track.
+
+    Args:
+        sample_rate (int): Audio sampling rate in samples per second.
+
+    Returns:
+        tuple[np.ndarray, tuple[float, ...]]: The result produced by this operation.
+    """
     phrases = ((0.3, 0.42), (1.25, 0.36), (2.4, 0.38), (2.95, 0.24), (4.4, 0.4), (5.1, 0.32), (6.4, 0.45))
     onset_times = tuple(start for start, _ in phrases)
     signal = np.zeros(sample_rate * 8, dtype=np.float32)
@@ -79,6 +111,16 @@ def make_vocal_phrase_track(sample_rate: int = 22050) -> tuple[np.ndarray, tuple
 def make_half_double_ambiguous_track(
     sample_rate: int = 22050,
 ) -> tuple[np.ndarray, tuple[float, ...], tuple[float, float]]:
+    """Create half double ambiguous track.
+
+    Args:
+        sample_rate (int): Audio sampling rate in samples per second.
+
+    Returns:
+        tuple[np.ndarray, tuple[float, ...], tuple[float, float]]: The result
+            produced by
+            this operation.
+    """
     onset_times = tuple(float(value) for value in np.arange(0.25, 7.0, 0.5))
     signal = np.zeros(sample_rate * 8, dtype=np.float32)
     click_length = round(sample_rate * 0.03)
@@ -94,7 +136,13 @@ def make_half_double_ambiguous_track(
 
 
 class TestAudioAnalysis(unittest.TestCase):
+    """Test audio analysis behavior."""
     def test_performance_fixtures_have_known_repeatable_ground_truth(self):
+        """Exercise the `performance fixtures have known repeatable ground truth`...
+
+        Returns:
+            None: No value is returned.
+        """
         strum, strum_onsets = make_guitar_strum_track()
         strum_repeat, _ = make_guitar_strum_track()
         vocal, vocal_onsets = make_vocal_phrase_track()
@@ -115,6 +163,11 @@ class TestAudioAnalysis(unittest.TestCase):
             self.assertGreater(float(np.max(np.abs(signal))), 0.0)
 
     def test_analyzed_guitar_and_vocal_fixtures_obey_each_onset_timeout(self):
+        """Exercise the `analyzed guitar and vocal fixtures obey each onset timeout`...
+
+        Returns:
+            None: No value is returned.
+        """
         fixtures = (
             ("guitar", make_guitar_strum_track),
             ("vocal", make_vocal_phrase_track),
@@ -185,6 +238,11 @@ class TestAudioAnalysis(unittest.TestCase):
                         self.assertLessEqual(inactive_at, last_onset + timeout_seconds + 0.5)
 
     def test_style_and_feel_candidates_render_offline_with_inspectable_timing(self):
+        """Exercise the `style and feel candidates render offline with inspectable...
+
+        Returns:
+            None: No value is returned.
+        """
         sample_rate = 22050
         asset_directory = Path(__file__).parents[1] / "drum_companion" / "assets" / "drums"
         bank = SampleBank.load_starter_kit(asset_directory, sample_rate=sample_rate, channels=2)
@@ -209,6 +267,11 @@ class TestAudioAnalysis(unittest.TestCase):
             self.assertFalse(np.array_equal(candidates["tight"], candidates["relaxed"]))
 
     def test_wav_analysis_tracks_tempo_shift_and_absolute_onsets(self):
+        """Exercise the `wav analysis tracks tempo shift and absolute onsets` test...
+
+        Returns:
+            None: No value is returned.
+        """
         sample_rate = 22050
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "pulse-shift.wav"
@@ -228,6 +291,11 @@ class TestAudioAnalysis(unittest.TestCase):
         self.assertTrue(all(0.0 <= item.combined_energy <= 1.0 for item in observations))
 
     def test_pause_lowers_tempo_confidence_and_reports_phrase_break(self):
+        """Exercise the `pause lowers tempo confidence and reports phrase break`...
+
+        Returns:
+            None: No value is returned.
+        """
         sample_rate = 22050
         first = make_pulse_track(sample_rate)[: int(sample_rate * 4)]
         second = make_pulse_track(sample_rate)[int(sample_rate * 6) : int(sample_rate * 10)]
@@ -252,6 +320,11 @@ class TestAudioAnalysis(unittest.TestCase):
         self.assertFalse(hasattr(paused[-1], "phrase"))
 
     def test_irregular_attacks_do_not_claim_a_reliable_tempo(self):
+        """Exercise the `irregular attacks do not claim a reliable tempo` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         sample_rate = 22050
         signal = np.zeros(sample_rate * 8, dtype=np.float32)
         click_length = int(sample_rate * 0.025)
@@ -272,6 +345,11 @@ class TestAudioAnalysis(unittest.TestCase):
         self.assertFalse(hasattr(latest, "phrase"))
 
     def test_analyzed_blocks_update_and_hold_groove_tempo(self):
+        """Exercise the `analyzed blocks update and hold groove tempo` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         sample_rate = 22050
         signal = make_pulse_track(sample_rate)[: int(sample_rate * 4)]
         signal = np.concatenate((signal, np.zeros(sample_rate * 2, dtype=np.float32)))
@@ -297,6 +375,11 @@ class TestAudioAnalysis(unittest.TestCase):
         self.assertTrue(any("K" in cell or "S" in cell for cell in paused[-1][1].pattern))
 
     def test_end_to_end_tempo_shift_pause_and_recovery(self):
+        """Exercise the `end to end tempo shift pause and recovery` test scenario.
+
+        Returns:
+            None: No value is returned.
+        """
         sample_rate = 22050
         signal = make_pulse_track(sample_rate)
         first = signal[: int(sample_rate * 4)]
@@ -337,6 +420,11 @@ class TestAudioAnalysis(unittest.TestCase):
         self.assertTrue(any("K" in cell or "S" in cell for cell in recovered[-1].pattern))
 
     def test_ambiguous_pulse_confirmation_preserves_queued_frames_end_to_end(self):
+        """Exercise the `ambiguous pulse confirmation preserves queued frames end to...
+
+        Returns:
+            None: No value is returned.
+        """
         sample_rate = 22050
         samples, _, candidate_tempos = make_half_double_ambiguous_track(sample_rate)
         with tempfile.TemporaryDirectory() as directory:
@@ -345,7 +433,13 @@ class TestAudioAnalysis(unittest.TestCase):
             observations = analyze_wav(path, update_interval_seconds=0.5)
 
         class OfflineOutput:
+            """Render scheduled events through an offline sample mixer in tests."""
             def __init__(self):
+                """Initialize the instance.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.sample_bank = SampleBank(
                     {"kick": np.ones((4, 1), dtype=np.float32), "snare": np.ones((4, 1), dtype=np.float32)},
                     sample_rate=1000,
@@ -355,6 +449,16 @@ class TestAudioAnalysis(unittest.TestCase):
                 self.scheduled = []
 
             def schedule(self, event, frame_position):
+                """Schedule the associated resource or event.
+
+                Args:
+                    event (object): Scheduled audio event to process.
+                    frame_position (object): Output-frame position associated
+                        with the event.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.scheduled.append((frame_position, event))
 
         output = OfflineOutput()
@@ -397,10 +501,21 @@ class TestAudioAnalysis(unittest.TestCase):
         )
 
     def test_phrase_transition_changes_future_bars_without_moving_queued_hits(self):
+        """Exercise the `phrase transition changes future bars without moving queued...
+
+        Returns:
+            None: No value is returned.
+        """
         sample_rate = 1000
 
         class OfflineOutput:
+            """Render scheduled events through an offline sample mixer in tests."""
             def __init__(self):
+                """Initialize the instance.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.sample_bank = SampleBank(
                     {"kick": np.ones((1, 1), dtype=np.float32)},
                     sample_rate=sample_rate,
@@ -410,6 +525,16 @@ class TestAudioAnalysis(unittest.TestCase):
                 self.scheduled = []
 
             def schedule(self, event, frame_position):
+                """Schedule the associated resource or event.
+
+                Args:
+                    event (object): Scheduled audio event to process.
+                    frame_position (object): Output-frame position associated
+                        with the event.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.scheduled.append((frame_position, event))
 
         output = OfflineOutput()
@@ -450,6 +575,11 @@ class TestAudioAnalysis(unittest.TestCase):
         self.assertEqual(scheduled_frames, sorted(scheduled_frames))
 
     def test_offline_fixture_renders_from_analysis_through_sample_mixer(self):
+        """Exercise the `offline fixture renders from analysis through sample mixer`...
+
+        Returns:
+            None: No value is returned.
+        """
         sample_rate = 22050
         source = make_pulse_track(sample_rate)
         first_section = source[: int(sample_rate * 4)]
@@ -474,12 +604,28 @@ class TestAudioAnalysis(unittest.TestCase):
         mixer = SampleMixer(bank)
 
         class OfflineOutput:
+            """Render scheduled events through an offline sample mixer in tests."""
             def __init__(self):
+                """Initialize the instance.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.sample_bank = bank
                 self.frame_position = 0
                 self.scheduled = []
 
             def schedule(self, event, frame_position):
+                """Schedule the associated resource or event.
+
+                Args:
+                    event (object): Scheduled audio event to process.
+                    frame_position (object): Output-frame position associated
+                        with the event.
+
+                Returns:
+                    None: No value is returned.
+                """
                 self.scheduled.append((frame_position, event))
 
         output = OfflineOutput()

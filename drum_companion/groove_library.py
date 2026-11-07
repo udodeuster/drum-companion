@@ -1,3 +1,5 @@
+"""Persistence and validation for user-authored drum grooves."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,12 +34,18 @@ class GrooveLibraryError(RuntimeError):
 
 @dataclass(frozen=True)
 class SavedGroove:
+    """Represent a validated, immutable saved groove."""
     id: str
     name: str
     tracks: Mapping[str, tuple[bool, ...]]
     levels: Mapping[str, float]
 
     def __post_init__(self) -> None:
+        """Validate the instance fields after initialization.
+
+        Returns:
+            None: No value is returned.
+        """
         if not isinstance(self.id, str):
             raise ValueError("Groove id must be a UUID string")
         try:
@@ -84,9 +92,25 @@ class SavedGroove:
         tracks: Mapping[str, tuple[bool, ...]],
         levels: Mapping[str, float],
     ) -> "SavedGroove":
+        """Handle create.
+
+        Args:
+            name (str): Name or identifier associated with the item.
+            tracks (Mapping[str, tuple[bool, ...]]): Instrument tracks that make
+                up the groove.
+            levels (Mapping[str, float]): Per-track or per-instrument output levels.
+
+        Returns:
+            'SavedGroove': The result produced by this operation.
+        """
         return cls(str(uuid4()), name, tracks, levels)
 
     def to_dict(self) -> dict[str, object]:
+        """Convert dict.
+
+        Returns:
+            dict[str, object]: The result produced by this operation.
+        """
         return {
             "id": self.id,
             "name": self.name,
@@ -99,11 +123,24 @@ class GrooveLibrary:
     """Persistent, host-local collection of explicitly saved grooves."""
 
     def __init__(self, path: str | Path | None = None) -> None:
+        """Initialize the instance.
+
+        Args:
+            path (str | Path | None): Filesystem path used by the operation.
+
+        Returns:
+            None: No value is returned.
+        """
         self.path = Path(path) if path is not None else self.default_path()
         self._lock = RLock()
 
     @staticmethod
     def default_path() -> Path:
+        """Handle default path.
+
+        Returns:
+            Path: The result produced by this operation.
+        """
         local_app_data = os.environ.get("LOCALAPPDATA")
         if local_app_data:
             return Path(local_app_data) / "DrumCompanion" / "grooves.json"
@@ -112,14 +149,35 @@ class GrooveLibrary:
         return Path.home() / ".local" / "share" / "DrumCompanion" / "grooves.json"
 
     def list_grooves(self) -> tuple[SavedGroove, ...]:
+        """List grooves.
+
+        Returns:
+            tuple[SavedGroove, ...]: The result produced by this operation.
+        """
         with self._lock:
             return self._read()
 
     def get_groove(self, groove_id: str) -> SavedGroove | None:
+        """Return groove.
+
+        Args:
+            groove_id (str): Unique identifier of the saved groove.
+
+        Returns:
+            SavedGroove | None: The result produced by this operation.
+        """
         with self._lock:
             return next((groove for groove in self._read() if groove.id == groove_id), None)
 
     def save_groove(self, groove: SavedGroove) -> tuple[SavedGroove, ...]:
+        """Save groove.
+
+        Args:
+            groove (SavedGroove): Groove data to process.
+
+        Returns:
+            tuple[SavedGroove, ...]: The result produced by this operation.
+        """
         if not isinstance(groove, SavedGroove):
             raise ValueError("Only validated SavedGroove instances can be saved")
         with self._lock:
@@ -141,6 +199,14 @@ class GrooveLibrary:
             return tuple(grooves)
 
     def delete_groove(self, groove_id: str) -> tuple[SavedGroove, ...]:
+        """Delete groove.
+
+        Args:
+            groove_id (str): Unique identifier of the saved groove.
+
+        Returns:
+            tuple[SavedGroove, ...]: The result produced by this operation.
+        """
         with self._lock:
             grooves = self._read()
             remaining = tuple(groove for groove in grooves if groove.id != groove_id)
@@ -150,6 +216,11 @@ class GrooveLibrary:
             return remaining
 
     def _read(self) -> tuple[SavedGroove, ...]:
+        """Handle read.
+
+        Returns:
+            tuple[SavedGroove, ...]: The result produced by this operation.
+        """
         if not self.path.exists():
             if self.path.parent.exists() and not self.path.parent.is_dir():
                 raise GrooveLibraryError(f"Unable to read groove library {self.path}: parent is not a directory")
@@ -181,6 +252,14 @@ class GrooveLibrary:
 
     @staticmethod
     def _parse_groove(item: object) -> SavedGroove:
+        """Handle parse groove.
+
+        Args:
+            item (object): Item to validate or process.
+
+        Returns:
+            SavedGroove: The result produced by this operation.
+        """
         if not isinstance(item, dict) or set(item) != {"id", "name", "tracks", "levels"}:
             raise ValueError("Each groove must contain id, name, tracks, and levels")
         if not isinstance(item["tracks"], dict) or not isinstance(item["levels"], dict):
@@ -199,6 +278,15 @@ class GrooveLibrary:
         )
 
     def _write(self, grooves: tuple[SavedGroove, ...]) -> None:
+        """Handle write.
+
+        Args:
+            grooves (tuple[SavedGroove, ...]): Saved groove entries to validate
+                or persist.
+
+        Returns:
+            None: No value is returned.
+        """
         document = {
             "version": _LIBRARY_VERSION,
             "grooves": [groove.to_dict() for groove in grooves],
