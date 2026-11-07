@@ -6,6 +6,8 @@ appropriate drum groove, adapting its style and dynamics to the performer. The
 drums should sound natural, with a groove that feels expressive rather than
 mechanical.
 
+This program was created with the help of AI.
+
 ![Drum Companion web UI](docs/screenshots/web-ui.png)
 
 ## License
